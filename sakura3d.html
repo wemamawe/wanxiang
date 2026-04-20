@@ -284,7 +284,7 @@ function buildBranch(px,py,pz,dx,dy,dz,len,rad,depth){
     buildBranch(ex,ey,ez,mDir.x,mDir.y,mDir.z,lr*0.55,rad*0.50,depth+2);
   }
 }
-buildBranch(0,0,0, 0,1,0, 2.8, 0.22, 0);
+buildBranch(0,0,0, 0,1,0, 3.2, 0.22, 0);
 const TOTAL=branches.length;
 
 const branchMeshes=[];
@@ -304,17 +304,21 @@ for(const b of branches){
   bGroup.add(m); branchMeshes.push(m);
 }
 
-// tip positions for particle placement
-const tips=branches.filter(b=>b.depth>=5);
+// tip positions — every branch segment contributes
+const tips=branches.filter(b=>b.depth>=4);
 const tipPositions=tips.map(b=>new THREE.Vector3(b.ex,b.ey,b.ez));
 const allTipPos=[];
 for(const b of branches){
-  for(let k=0;k<3;k++)
+  // more samples on outer branches
+  const samples = b.depth>=5 ? 5 : b.depth>=3 ? 3 : 2;
+  for(let k=0;k<samples;k++){
+    const t=0.3+Math.random()*0.7;
     allTipPos.push(new THREE.Vector3(
-      b.px+(b.ex-b.px)*(0.5+Math.random()*0.5),
-      b.py+(b.ey-b.py)*(0.5+Math.random()*0.5),
-      b.pz+(b.ez-b.pz)*(0.5+Math.random()*0.5)
+      b.px+(b.ex-b.px)*t,
+      b.py+(b.ey-b.py)*t,
+      b.pz+(b.ez-b.pz)*t
     ));
+  }
 }
 
 // ── Particle helper ──
@@ -336,9 +340,9 @@ function makeParticles(count,tex,size,positions){
   return new THREE.Points(geo,mat);
 }
 
-const budPts    = makeParticles(800,  budTex,    0.28, tipPositions);
-const sakuraPts = makeParticles(1600, sakuraTex, 0.55, allTipPos);
-const leafPts   = makeParticles(1200, leafTex,   0.42, allTipPos);
+const budPts    = makeParticles(1200, budTex,    0.30, tipPositions);
+const sakuraPts = makeParticles(2400, sakuraTex, 0.55, allTipPos);
+const leafPts   = makeParticles(2000, leafTex,   0.44, allTipPos);
 scene.add(budPts); scene.add(sakuraPts); scene.add(leafPts);
 budPts.visible=false; sakuraPts.visible=false; leafPts.visible=false;
 
@@ -442,7 +446,7 @@ scene.add(fireflies);
 // ── Stage state machine ──
 const CAPTIONS=['花苞初绽','繁花盛开','花瓣飞雨','新叶初生'];
 let targetStage=0;
-const state={sprout:0,grow:0,bud:0,bloom:0,petal:0,leaf:0};
+const state={sprout:0,bud:0,bloom:0,petal:0,leaf:0};
 
 window.goStage=s=>{
   targetStage=s;
@@ -518,27 +522,23 @@ renderer.setAnimationLoop(()=>{
   const sp=dt*0.75;
 
   state.sprout =lerp(state.sprout, targetStage>=0?1:0, sp*2.5);
-  state.grow   =lerp(state.grow,   targetStage>=1?1:0, sp*0.55);
   state.bud    =lerp(state.bud,    targetStage===0?1:0, sp*0.8);
   state.bloom  =lerp(state.bloom,  (targetStage===1||targetStage===2)?1:0, sp*0.65);
   state.petal  =lerp(state.petal,  targetStage===2?1:0, sp*0.5);
   state.leaf   =lerp(state.leaf,   targetStage===3?1:0, sp*0.55);
 
-  // Sprout
-  const sproutFade=Math.min(1,Math.max(0,1-state.grow/0.35));
+  // Sprout (only at very start before stage 0 settles, then hide)
+  const sproutFade=Math.min(1,Math.max(0,1-state.bud/0.5));
   stemMesh.scale.y=easeBack(Math.min(1,Math.max(0,state.sprout*1.8)))*sproutFade;
   sproutGroup.children.forEach(c=>{
     if(c.userData.isSproutLeaf)
       c.scale.setScalar(easeBack(Math.min(1,Math.max(0,(state.sprout-0.4)*2)))*sproutFade);
   });
 
-  // Branches reveal — always show at stages 0+
-  // At stage 0 (bud): show full branches but keep them thin/dark
-  const bReveal = targetStage===0 ? TOTAL : easeIO(state.grow)*TOTAL;
+  // Branches: always fully visible from stage 0 onwards, no grow animation
   for(const m of branchMeshes){
-    const t=Math.min(1,Math.max(0,(bReveal-m.userData.id)/Math.max(1,TOTAL*0.05)));
-    m.visible = t>0.01;
-    m.scale.y = targetStage===0 ? 1.0 : easeIO(t);
+    m.visible = true;
+    m.scale.y = 1.0;
   }
 
   // Particles
