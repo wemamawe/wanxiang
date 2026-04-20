@@ -558,26 +558,29 @@ renderer.setAnimationLoop(()=>{
   });
 
   // ── Wind simulation ──
-  // gusts: slow wave + fast ripple, periodic calm
-  const windBase = Math.sin(elapsed*0.18)*0.5 + Math.sin(elapsed*0.07)*0.5;
-  const windGust = Math.max(0, Math.sin(elapsed*0.41))*0.8;
-  const windStrength = Math.max(0, windBase + windGust); // 0..1.3
-  const windDir = new THREE.Vector3(1, 0, 0.3).normalize(); // wind blows +X
+  const windBase = Math.sin(elapsed*0.22)*0.6 + Math.sin(elapsed*0.09)*0.4;
+  const windGust = Math.max(0, Math.sin(elapsed*0.37))*1.0;
+  const windStrength = Math.max(0, windBase + windGust); // 0..1.6
 
-  // ── Branches sway with wind ──
+  // ── Whole tree sways as one unit (most visible effect) ──
+  const treeSwayX = Math.sin(elapsed*1.6)*windStrength*0.045
+                  + Math.sin(elapsed*2.9)*windStrength*0.018;
+  const treeSwayZ = Math.sin(elapsed*1.3+0.5)*windStrength*0.022;
+  bGroup.rotation.x = treeSwayX;
+  bGroup.rotation.z = treeSwayZ;
+  sproutGroup.rotation.x = treeSwayX;
+  sproutGroup.rotation.z = treeSwayZ;
+
+  // ── Individual branch micro-tremor (outer branches twitch more) ──
   for(const m of branchMeshes){
     if(!m.visible) continue;
     const d = m.userData.depth;
+    if(d < 4) continue; // only outer branches tremble
     const phase = m.userData.windPhase;
-    // outer branches sway more; scale by depth
-    const swayAmt = windStrength * (0.008 + d*0.012);
-    const swayAngle = Math.sin(elapsed*1.8 + phase)*swayAmt
-                    + Math.sin(elapsed*3.1 + phase*1.3)*swayAmt*0.3;
-    // rotate around wind-perpendicular axis (Z)
+    const tremble = windStrength*(0.015+d*0.008);
     const q = m.userData.baseQuat.clone();
-    const windRot = new THREE.Quaternion().setFromAxisAngle(
-      new THREE.Vector3(0,0,1), swayAngle
-    );
+    const ang = Math.sin(elapsed*4.5+phase)*tremble;
+    const windRot = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), ang);
     m.quaternion.copy(windRot.multiply(q));
   }
 
@@ -588,23 +591,19 @@ renderer.setAnimationLoop(()=>{
   }
 
   // Particles
-  // ── Particles sway with wind ──
-  const windDrift = windStrength * 0.012;
+  // ── Particle groups follow tree sway ──
+  // Just sync particle group rotation to bGroup so flowers/leaves move with branches
   if(sakuraPts.visible){
-    const pa = sakuraPts.geometry.getAttribute('position');
-    for(let i=0;i<pa.count;i++){
-      pa.array[i*3] += Math.sin(elapsed*1.4+i*0.3)*windDrift;
-      pa.array[i*3+2] += Math.cos(elapsed*1.1+i*0.4)*windDrift*0.4;
-    }
-    pa.needsUpdate=true;
+    sakuraPts.rotation.x = treeSwayX * 0.8;
+    sakuraPts.rotation.z = treeSwayZ * 0.8;
   }
   if(leafPts.visible){
-    const pa = leafPts.geometry.getAttribute('position');
-    for(let i=0;i<pa.count;i++){
-      pa.array[i*3] += Math.sin(elapsed*1.2+i*0.25)*windDrift*0.7;
-      pa.array[i*3+2] += Math.cos(elapsed*0.9+i*0.35)*windDrift*0.3;
-    }
-    pa.needsUpdate=true;
+    leafPts.rotation.x = treeSwayX * 0.8;
+    leafPts.rotation.z = treeSwayZ * 0.8;
+  }
+  if(budPts.visible){
+    budPts.rotation.x = treeSwayX * 0.8;
+    budPts.rotation.z = treeSwayZ * 0.8;
   }
 
   budPts.visible    = targetStage===0 && state.bud>0.02;
