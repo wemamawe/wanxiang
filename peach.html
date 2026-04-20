@@ -370,6 +370,8 @@ function resetLeaf(i){
   fallPos[i*3+2]= tip.z + (Math.random()-.5)*0.8;
   fallVel[i]={vx:(Math.random()-.5)*0.04, vy:-(0.025+Math.random()*0.035),
               vz:(Math.random()-.5)*0.03, phase:Math.random()*Math.PI*2};
+  fallState[i]='falling';
+}
 for(let i=0;i<FALL;i++) resetLeaf(i);
 fallGeo.setAttribute('position',new THREE.BufferAttribute(fallPos,3));
 // ── Ground leaves (flat, lying on terrain) ──
