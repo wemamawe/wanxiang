@@ -459,10 +459,11 @@ renderer.setAnimationLoop(()=>{
       c.scale.setScalar(easeBack(clamp((state.sprout-0.4)*2))*sproutFade);
   });
 
-  // ── 2. Branches grow + per-branch leaf dots grow with them ──
+  // ── 2. Branches: hidden until grow stage starts ──
   const bReveal = easeIO(state.grow)*TOTAL;
   for(const m of branchMeshes){
     const t = clamp((bReveal-m.userData.id)/Math.max(1,TOTAL*0.05));
+    m.visible = t > 0.01;  // 完全隐藏未生长的枝条
     m.scale.y = easeIO(t);
     // leaf color tint: green tint grows in with branches
     if(m.material && targetStage===1){
