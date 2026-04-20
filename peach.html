@@ -395,8 +395,48 @@ const easeOut=t=>1-Math.pow(1-clamp(t),2);
 const easeBack=t=>{t=clamp(t);return 1+2.7*Math.pow(t-1,3)+1.7*Math.pow(t-1,2);};
 const easeIO=t=>{t=clamp(t);return t<.5?2*t*t:-1+(4-2*t)*t;};
 
+// ── Orbit controls (drag to rotate, wheel to zoom) ──
+let orbitTheta=0, orbitPhi=Math.PI/8;
+let orbitRadius=18;
+let isDragging=false, lastX=0, lastY=0;
+const TARGET=new THREE.Vector3(0,3.5,0);
+
+renderer.domElement.addEventListener('mousedown', e=>{ isDragging=true; lastX=e.clientX; lastY=e.clientY; });
+window.addEventListener('mouseup', ()=>{ isDragging=false; });
+window.addEventListener('mousemove', e=>{
+  if(!isDragging) return;
+  orbitTheta -= (e.clientX-lastX)*0.005;
+  orbitPhi   = clamp(orbitPhi-(e.clientY-lastY)*0.005)*Math.PI; // 0..PI
+  orbitPhi   = Math.max(0.05, Math.min(Math.PI*0.45, orbitPhi));
+  lastX=e.clientX; lastY=e.clientY;
+});
+window.addEventListener('wheel', e=>{
+  orbitRadius = Math.max(6, Math.min(40, orbitRadius+e.deltaY*0.02));
+}, {passive:true});
+// Touch support
+let lastTouchDist=0, lastTouchX=0, lastTouchY=0;
+renderer.domElement.addEventListener('touchstart', e=>{
+  if(e.touches.length===1){ isDragging=true; lastTouchX=e.touches[0].clientX; lastTouchY=e.touches[0].clientY; }
+  if(e.touches.length===2){ lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY); }
+});
+renderer.domElement.addEventListener('touchend', ()=>{ isDragging=false; });
+renderer.domElement.addEventListener('touchmove', e=>{
+  e.preventDefault();
+  if(e.touches.length===1 && isDragging){
+    orbitTheta -= (e.touches[0].clientX-lastTouchX)*0.005;
+    orbitPhi = Math.max(0.05, Math.min(Math.PI*0.45, orbitPhi-(e.touches[0].clientY-lastTouchY)*0.005));
+    lastTouchX=e.touches[0].clientX; lastTouchY=e.touches[0].clientY;
+  }
+  if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX, e.touches[0].clientY-e.touches[1].clientY);
+    orbitRadius=Math.max(6,Math.min(40,orbitRadius-(d-lastTouchDist)*0.05));
+    lastTouchDist=d;
+  }
+},{passive:false});
+
 const clock=new THREE.Clock();
 let elapsed=0;
+let autoOrbit=true; // gentle auto-rotate when not dragging
 
 renderer.setAnimationLoop(()=>{
   const dt=clock.getDelta(); elapsed+=dt;
@@ -409,30 +449,38 @@ renderer.setAnimationLoop(()=>{
   state.fruit     =lerp(state.fruit,     targetStage===3?1:0, sp*0.5);
   state.fall      =lerp(state.fall,      targetStage===4?1:0, sp*0.55);
 
-  // Sprout: fades when branches grow OR at fall stage
-  const sproutFade=clamp(1-state.grow/0.35)*clamp(1-state.fall/0.3);
-  stemMesh.scale.y=easeBack(clamp(state.sprout*1.8))*sproutFade;
+  // ── 1. Sprout: only visible at stage 0, hides as branches grow ──
+  const sproutFade = clamp(1-state.grow/0.35) * clamp(1-state.fall/0.3);
+  stemMesh.scale.y = easeBack(clamp(state.sprout*1.8))*sproutFade;
   sproutGroup.children.forEach(c=>{
-    if(c.userData.isSproutLeaf){
+    if(c.userData.isSproutLeaf)
       c.scale.setScalar(easeBack(clamp((state.sprout-0.4)*2))*sproutFade);
-    }
   });
 
-  // Branches
-  const bReveal=easeIO(state.grow)*TOTAL;
+  // ── 2. Branches grow + per-branch leaf dots grow with them ──
+  const bReveal = easeIO(state.grow)*TOTAL;
   for(const m of branchMeshes){
-    const t=clamp((bReveal-m.userData.id)/Math.max(1,TOTAL*0.05));
-    m.scale.y=easeIO(t);
+    const t = clamp((bReveal-m.userData.id)/Math.max(1,TOTAL*0.05));
+    m.scale.y = easeIO(t);
+    // leaf color tint: green tint grows in with branches
+    if(m.material && targetStage===1){
+      const g = clamp(t*1.2);
+      m.material.color.setHSL(0.06+g*0.28, 0.45-g*0.1, 0.15+g*0.05);
+    }
   }
 
-  // Particles
-  greenPts.material.opacity  =easeOut(state.greenLeaf)*0.88;
-  flowerPts.material.opacity =easeOut(state.flower)*0.92;
-  flowerPts.material.size    =0.52+Math.sin(elapsed*1.2)*0.04;
-  peachPts.material.opacity  =easeOut(state.fruit)*0.95;
-  peachPts.material.size     =0.58+Math.sin(elapsed*0.9)*0.025;
+  // ── Particles (green leaves sync with grow) ──
+  // during grow stage, greenLeaf opacity follows bReveal progress
+  const leafSync = targetStage===1 ? easeOut(state.grow)*0.9 : easeOut(state.greenLeaf)*0.88;
+  greenPts.material.opacity   = leafSync;
+  // individual leaf particles: only show ones near already-grown branches
+  // (approximate by making opacity proportional to grow)
+  flowerPts.material.opacity  = easeOut(state.flower)*0.92;
+  flowerPts.material.size     = 0.52+Math.sin(elapsed*1.2)*0.04;
+  peachPts.material.opacity   = easeOut(state.fruit)*0.95;
+  peachPts.material.size      = 0.58+Math.sin(elapsed*0.9)*0.025;
 
-  // Falling leaves
+  // ── Falling leaves ──
   fallMat.opacity=easeOut(state.fall)*0.90;
   if(state.fall>0.05){
     const pa=fallGeo.getAttribute('position');
@@ -446,13 +494,15 @@ renderer.setAnimationLoop(()=>{
     pa.needsUpdate=true;
   }
 
-  // Camera gentle orbit
-  camera.position.x=Math.sin(elapsed*0.09)*2.0;
-  camera.position.z=18+Math.sin(elapsed*0.06)*1.5;
-  camera.position.y=4+Math.sin(elapsed*0.07)*0.5;
-  camera.lookAt(0,3.5,0);
+  // ── 3. Camera: orbit (drag/wheel) + gentle auto-rotate ──
+  if(!isDragging) orbitTheta += dt*0.06; // slow auto-rotate
+  const cx = TARGET.x + orbitRadius*Math.sin(orbitPhi)*Math.sin(orbitTheta);
+  const cy = TARGET.y + orbitRadius*Math.cos(orbitPhi);
+  const cz = TARGET.z + orbitRadius*Math.sin(orbitPhi)*Math.cos(orbitTheta);
+  camera.position.set(cx,cy,cz);
+  camera.lookAt(TARGET);
 
-  // Clouds drift
+  // ── Clouds drift ──
   for(const c of clouds){
     c.mesh.position.x+=c.speed;
     if(c.mesh.position.x>65) c.mesh.position.x=-65;
