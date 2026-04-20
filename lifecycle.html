@@ -6,37 +6,33 @@
 <title>Tree of Life</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#0a0a0f; overflow:hidden; font-family:'PingFang SC','Microsoft YaHei',sans-serif; }
+body { background:#0d1117; display:flex; flex-direction:column; align-items:center;
+       justify-content:center; min-height:100vh; overflow:hidden; }
 canvas { display:block; }
 #ui {
-  position:fixed; bottom:48px; left:50%; transform:translateX(-50%);
-  display:flex; gap:12px; z-index:10;
+  position:fixed; bottom:36px; left:50%; transform:translateX(-50%);
+  display:flex; gap:10px; z-index:10;
 }
 .btn {
-  padding:8px 20px; border-radius:20px; border:1px solid rgba(255,255,255,0.25);
-  background:rgba(255,255,255,0.08); color:rgba(255,255,255,0.8);
-  cursor:pointer; font-size:13px; backdrop-filter:blur(8px);
-  transition:all .2s;
+  padding:8px 18px; border-radius:20px; border:1px solid rgba(255,255,255,0.2);
+  background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.7);
+  cursor:pointer; font-size:13px; font-family:'PingFang SC','Microsoft YaHei',sans-serif;
+  transition:all .25s; user-select:none;
 }
-.btn:hover { background:rgba(255,255,255,0.18); }
-.btn.active { background:rgba(255,200,150,0.25); border-color:rgba(255,200,150,0.6); color:#ffd0a0; }
+.btn:hover { background:rgba(255,255,255,0.14); }
+.btn.active { background:rgba(255,210,140,0.2); border-color:rgba(255,210,140,0.6); color:#ffd88a; }
 #caption {
-  position:fixed; bottom:110px; left:50%; transform:translateX(-50%);
-  color:rgba(255,255,255,0.75); font-size:18px; letter-spacing:4px;
-  text-shadow:0 0 20px rgba(255,200,150,0.5);
-  pointer-events:none; transition:opacity .8s;
-  white-space:nowrap;
-}
-#stage-label {
-  position:fixed; top:32px; left:50%; transform:translateX(-50%);
-  color:rgba(255,255,255,0.35); font-size:12px; letter-spacing:6px;
-  text-transform:uppercase; pointer-events:none;
+  position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
+  color:rgba(255,255,255,0.65); font-size:17px; letter-spacing:5px;
+  font-family:'PingFang SC','Microsoft YaHei',serif;
+  pointer-events:none; transition:opacity .7s;
+  text-shadow: 0 0 18px rgba(255,200,120,0.4);
 }
 </style>
 </head>
 <body>
-<div id="stage-label">TREE OF LIFE</div>
-<div id="caption"></div>
+<canvas id="c"></canvas>
+<div id="caption">种子破土</div>
 <div id="ui">
   <button class="btn active" onclick="goStage(0)">🌱 发芽</button>
   <button class="btn" onclick="goStage(1)">🌿 生长</button>
@@ -44,348 +40,288 @@ canvas { display:block; }
   <button class="btn" onclick="goStage(3)">🍑 结果</button>
   <button class="btn" onclick="goStage(4)">🍂 落叶</button>
 </div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, OX, OY;
 
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  OX = W / 2;
+  OY = H * 0.82;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Build tree ──
+// Each node: {x1,y1,x2,y2,depth,len,angle}
+const NODES = [];
+function buildTree(x, y, angle, len, depth) {
+  if (depth > 10 || len < 3) return;
+  const x2 = x + Math.cos(angle) * len;
+  const y2 = y + Math.sin(angle) * len;
+  NODES.push({ x1:x, y1:y, x2, y2, depth, len,
+               sw: Math.max(0.5, (10-depth)*0.55 + 0.5) });
+  const spread = 0.38 + (Math.random()-.5)*0.08;
+  buildTree(x2, y2, angle - spread*(0.85+Math.random()*0.3),
+            len*(0.68+Math.random()*0.06), depth+1);
+  buildTree(x2, y2, angle + spread*(0.72+Math.random()*0.3),
+            len*(0.65+Math.random()*0.06), depth+1);
+  if (depth < 4 && Math.random() < 0.28) {
+    buildTree(x2, y2, angle + (Math.random()-.5)*0.4,
+              len*0.55, depth+2);
   }
 }
-</script>
-<script type="module">
-import * as THREE from 'three';
+// seed for consistency
+let _s = 42;
+const _r = () => { _s=(_s*1664525+1013904223)&0xffffffff; return (_s>>>0)/0xffffffff; };
+const origRnd = Math.random;
+Math.random = _r;
+buildTree(0, 0, -Math.PI/2, 110, 0);
+Math.random = origRnd;
 
-// ── Scene ──
-const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
-document.body.prepend(renderer.domElement);
+const TOTAL = NODES.length;
+const TIPS  = NODES.filter(n => n.depth >= 6);
 
-const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0a0a1a, 0.035);
-
-const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 200);
-camera.position.set(0, 4, 14);
-camera.lookAt(0, 3, 0);
-
-// ── Lights ──
-const ambient = new THREE.AmbientLight(0x334466, 1.2);
-scene.add(ambient);
-const sun = new THREE.DirectionalLight(0xffeedd, 2.5);
-sun.position.set(5, 12, 6);
-sun.castShadow = true;
-scene.add(sun);
-const fill = new THREE.PointLight(0x8866ff, 1.5, 30);
-fill.position.set(-6, 6, 4);
-scene.add(fill);
-
-// ── Ground ──
-const groundGeo = new THREE.PlaneGeometry(40, 40);
-const groundMat = new THREE.MeshLambertMaterial({ color:0x111820 });
-const ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI/2;
-ground.receiveShadow = true;
-scene.add(ground);
-
-// ── Tree branch data (recursive) ──
-// Each branch: {start, end, radius, children[]}
-const branchData = [];
-function buildBranch(pos, dir, len, radius, depth) {
-  if (depth > 7 || len < 0.08) return;
-  const end = pos.clone().addScaledVector(dir, len);
-  branchData.push({ start: pos.clone(), end: end.clone(), radius, depth });
-  if (depth < 7) {
-    const spread = 0.45 + Math.random()*0.15;
-    // left
-    const lDir = dir.clone();
-    lDir.applyAxisAngle(new THREE.Vector3(Math.random()-.5, 0, Math.random()-.5).normalize(), spread);
-    lDir.normalize();
-    buildBranch(end, lDir, len*(0.68+Math.random()*0.08), radius*0.7, depth+1);
-    // right
-    const rDir = dir.clone();
-    rDir.applyAxisAngle(new THREE.Vector3(Math.random()-.5, 0, Math.random()-.5).normalize(), -spread*(0.8+Math.random()*0.4));
-    rDir.normalize();
-    buildBranch(end, rDir, len*(0.65+Math.random()*0.08), radius*0.68, depth+1);
-    // occasional third
-    if (depth < 4 && Math.random() < 0.3) {
-      const mDir = dir.clone();
-      mDir.applyAxisAngle(new THREE.Vector3(Math.random()-.5, 0, Math.random()-.5).normalize(), (Math.random()-.5)*0.5);
-      mDir.normalize();
-      buildBranch(end, mDir, len*0.55, radius*0.55, depth+2);
-    }
+// ── Flowers ──
+const FLOWERS = [];
+for (const n of TIPS) {
+  const count = 2 + Math.floor(Math.random()*4);
+  for (let k=0; k<count; k++) {
+    const t = 0.5 + Math.random()*0.5;
+    FLOWERS.push({
+      x: n.x1+(n.x2-n.x1)*t + (Math.random()-.5)*12,
+      y: n.y1+(n.y2-n.y1)*t + (Math.random()-.5)*12,
+      r: 3.5 + Math.random()*4,
+      hue: 338 + Math.floor(Math.random()*18),
+      phase: Math.random()*Math.PI*2,
+    });
   }
 }
 
-Math.seedrandom = (s) => { Math.random = () => { s=(s*9301+49297)%233280; return s/233280; }; };
-buildBranch(new THREE.Vector3(0,0,0), new THREE.Vector3(0,1,0), 2.2, 0.12, 0);
-
-// ── Build cylinder meshes for branches ──
-const branchMeshes = [];
-const branchMat = new THREE.MeshLambertMaterial({ color:0x3a2418 });
-for (const b of branchData) {
-  const dir = b.end.clone().sub(b.start);
-  const len = dir.length();
-  const geo = new THREE.CylinderGeometry(b.radius*0.6, b.radius, len, 6, 1);
-  const mesh = new THREE.Mesh(geo, branchMat.clone());
-  const mid = b.start.clone().lerp(b.end, 0.5);
-  mesh.position.copy(mid);
-  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.normalize());
-  mesh.castShadow = true;
-  mesh.scale.set(1, 0, 1); // start collapsed
-  mesh.userData.targetScale = 1;
-  mesh.userData.depth = b.depth;
-  mesh.userData.order = branchData.indexOf(b);
-  scene.add(mesh);
-  branchMeshes.push(mesh);
+// ── Fruits ──
+const FRUITS = [];
+for (const n of TIPS) {
+  if (Math.random() < 0.45) {
+    FRUITS.push({
+      x: n.x2 + (Math.random()-.5)*8,
+      y: n.y2 + Math.random()*6,
+      r: 5 + Math.random()*4,
+      hue: 10 + Math.floor(Math.random()*25),
+      phase: Math.random()*Math.PI*2,
+    });
+  }
 }
 
-// ── Flower particles ──
-const FLOWER_COUNT = 600;
-const flowerPositions = new Float32Array(FLOWER_COUNT * 3);
-const flowerColors    = new Float32Array(FLOWER_COUNT * 3);
-const flowerScales    = new Float32Array(FLOWER_COUNT);
+// ── Falling leaves ──
+const LEAVES = Array.from({length:280}, (_, i) => ({
+  x: (Math.random()-.5)*600,
+  y: -Math.random()*400,
+  vx: (Math.random()-.5)*0.8,
+  vy: 0.6+Math.random()*1.0,
+  rot: Math.random()*Math.PI*2,
+  vrot: (Math.random()-.5)*0.06,
+  rx: 5+Math.random()*4,
+  ry: 2.5+Math.random()*2,
+  hue: 22+Math.floor(Math.random()*30),
+  phase: Math.random()*Math.PI*2,
+}));
 
-// distribute flowers near branch tips
-const tipBranches = branchData.filter(b => b.depth >= 4);
-for (let i=0; i<FLOWER_COUNT; i++) {
-  const b = tipBranches[Math.floor(Math.random()*tipBranches.length)];
-  const t = 0.6 + Math.random()*0.4;
-  const pos = b.start.clone().lerp(b.end, t);
-  pos.x += (Math.random()-.5)*0.3;
-  pos.y += (Math.random()-.5)*0.3;
-  pos.z += (Math.random()-.5)*0.3;
-  flowerPositions[i*3]   = pos.x;
-  flowerPositions[i*3+1] = pos.y;
-  flowerPositions[i*3+2] = pos.z;
-  const hue = 340 + Math.random()*20;
-  const c = new THREE.Color().setHSL(hue/360, 0.7, 0.78);
-  flowerColors[i*3]=c.r; flowerColors[i*3+1]=c.g; flowerColors[i*3+2]=c.b;
-  flowerScales[i] = 0;
-}
-
-const flowerGeo = new THREE.BufferGeometry();
-flowerGeo.setAttribute('position', new THREE.BufferAttribute(flowerPositions, 3));
-flowerGeo.setAttribute('color',    new THREE.BufferAttribute(flowerColors, 3));
-flowerGeo.setAttribute('scale',    new THREE.BufferAttribute(flowerScales, 1));
-
-const flowerMat = new THREE.PointsMaterial({
-  size: 0.22, vertexColors: true, transparent: true,
-  opacity: 0, depthWrite: false,
-  blending: THREE.AdditiveBlending,
-});
-const flowerPoints = new THREE.Points(flowerGeo, flowerMat);
-scene.add(flowerPoints);
-
-// ── Fruit spheres ──
-const fruitMeshes = [];
-const fruitMat = new THREE.MeshLambertMaterial({ color:0xff6633 });
-for (let i=0; i<80; i++) {
-  const b = tipBranches[Math.floor(Math.random()*tipBranches.length)];
-  const pos = b.end.clone();
-  pos.x += (Math.random()-.5)*0.4;
-  pos.z += (Math.random()-.5)*0.4;
-  const geo = new THREE.SphereGeometry(0.06+Math.random()*0.05, 6, 6);
-  const mesh = new THREE.Mesh(geo, fruitMat.clone());
-  mesh.position.copy(pos);
-  mesh.scale.setScalar(0);
-  mesh.castShadow = true;
-  scene.add(mesh);
-  fruitMeshes.push(mesh);
-}
-
-// ── Falling leaf particles ──
-const LEAF_COUNT = 400;
-const leafPos   = new Float32Array(LEAF_COUNT * 3);
-const leafCol   = new Float32Array(LEAF_COUNT * 3);
-const leafVel   = [];
-for (let i=0; i<LEAF_COUNT; i++) {
-  leafPos[i*3]   = (Math.random()-.5)*10;
-  leafPos[i*3+1] = Math.random()*12 + 1;
-  leafPos[i*3+2] = (Math.random()-.5)*6;
-  const warm = Math.random();
-  const c = new THREE.Color().setHSL(0.07+warm*0.05, 0.9, 0.5+warm*0.2);
-  leafCol[i*3]=c.r; leafCol[i*3+1]=c.g; leafCol[i*3+2]=c.b;
-  leafVel.push({
-    vx:(Math.random()-.5)*0.02, vy:-(0.02+Math.random()*0.03),
-    vz:(Math.random()-.5)*0.01, phase:Math.random()*Math.PI*2
-  });
-}
-const leafGeo = new THREE.BufferGeometry();
-leafGeo.setAttribute('position', new THREE.BufferAttribute(leafPos, 3));
-leafGeo.setAttribute('color',    new THREE.BufferAttribute(leafCol, 3));
-const leafMat = new THREE.PointsMaterial({
-  size:0.15, vertexColors:true, transparent:true, opacity:0, depthWrite:false,
-});
-const leafPoints = new THREE.Points(leafGeo, leafMat);
-scene.add(leafPoints);
-
-// ── Sprout (stage 0) ──
-const sproutGeo = new THREE.CylinderGeometry(0.02, 0.04, 0.4, 6);
-const sproutMesh = new THREE.Mesh(sproutGeo, new THREE.MeshLambertMaterial({color:0x5a8a30}));
-sproutMesh.position.y = 0.2;
-sproutMesh.scale.y = 0;
-scene.add(sproutMesh);
-
-// ── Stage system ──
-const CAPTIONS = [
-  '种子破土', '枝叶生长', '繁花盛开', '硕果累累', '落叶归根'
-];
-let currentStage = -1;
-let stageProgress = 0;
+// ── State ──
+const CAPTIONS = ['种子破土','枝叶生长','繁花盛开','硕果累累','落叶归根'];
 let targetStage = 0;
+const state = { sprout:0, grow:0, flower:0, fruit:0, fall:0 };
 
 const buttons = document.querySelectorAll('.btn');
-window.goStage = (s) => {
+window.goStage = s => {
   targetStage = s;
   buttons.forEach((b,i) => b.classList.toggle('active', i===s));
   const cap = document.getElementById('caption');
-  cap.style.opacity='0';
-  setTimeout(()=>{ cap.textContent=CAPTIONS[s]; cap.style.opacity='1'; }, 400);
-};
-goStage(0);
-
-function lerp(a,b,t){ return a+(b-a)*t; }
-function clamp01(t){ return Math.max(0,Math.min(1,t)); }
-function easeInOut(t){ return t<.5?2*t*t:-1+(4-2*t)*t; }
-function easeBack(t){ const c=1.7; return 1+c*Math.pow(t-1,3)+(c+1)*Math.pow(t-1,2); }
-
-// Stage state
-const state = {
-  sprout: 0,       // 0→1
-  branches: 0,     // 0→1 (controls branch Y scale)
-  flowers: 0,      // 0→1
-  fruits: 0,       // 0→1
-  leaves: 0,       // 0→1 (fall intensity)
-  flowerFade: 0,   // 1→0 when fruit stage
+  cap.style.opacity = '0';
+  setTimeout(()=>{ cap.textContent = CAPTIONS[s]; cap.style.opacity='1'; }, 350);
 };
 
-// ── Animate ──
-let t0 = performance.now();
-const clock = new THREE.Clock();
+// ── Helpers ──
+function lerp(a,b,t){ return a+(b-a)*Math.min(1,Math.max(0,t)); }
+function easeOut(t){ return 1-Math.pow(1-Math.min(1,Math.max(0,t)),2); }
+function easeBack(t){
+  t=Math.min(1,Math.max(0,t));
+  return 1+2.7*Math.pow(t-1,3)+1.7*Math.pow(t-1,2);
+}
+function easeInOut(t){ t=Math.min(1,Math.max(0,t)); return t<.5?2*t*t:-1+(4-2*t)*t; }
 
-renderer.setAnimationLoop(() => {
-  const dt = clock.getDelta();
-  const elapsed = (performance.now()-t0)/1000;
+// ── Draw helpers ──
+function drawFlower(x, y, r, hue, alpha, pulse) {
+  const pr = r * (1 + pulse*0.06);
+  for (let i=0;i<5;i++) {
+    const a=(i/5)*Math.PI*2;
+    ctx.beginPath();
+    ctx.ellipse(x+Math.cos(a)*pr*1.1, y+Math.sin(a)*pr*1.1,
+                pr*0.85, pr*0.45, a, 0, Math.PI*2);
+    ctx.fillStyle=`hsla(${hue},70%,82%,${0.88*alpha})`;
+    ctx.fill();
+  }
+  ctx.beginPath(); ctx.arc(x,y,pr*0.42,0,Math.PI*2);
+  ctx.fillStyle=`hsla(${hue+10},85%,62%,${0.95*alpha})`; ctx.fill();
+}
 
-  // Advance state toward target stage
-  const sp = dt * 0.8; // speed
+function drawFruit(x, y, r, hue, alpha, sway) {
+  const sx = x + sway;
+  // stem
+  ctx.beginPath(); ctx.moveTo(sx,y-r); ctx.lineTo(sx,y-r-6);
+  ctx.strokeStyle=`rgba(60,100,30,${alpha*0.7})`; ctx.lineWidth=1; ctx.stroke();
+  // body
+  const g = ctx.createRadialGradient(sx-r*0.3,y-r*0.3,r*0.1,sx,y,r);
+  g.addColorStop(0,`hsla(${hue},90%,72%,${alpha})`);
+  g.addColorStop(1,`hsla(${hue+10},80%,40%,${alpha})`);
+  ctx.beginPath(); ctx.arc(sx,y,r,0,Math.PI*2);
+  ctx.fillStyle=g; ctx.fill();
+  // shine
+  ctx.beginPath(); ctx.ellipse(sx-r*0.28,y-r*0.28,r*0.25,r*0.15,-0.4,0,Math.PI*2);
+  ctx.fillStyle=`rgba(255,255,255,${alpha*0.4})`; ctx.fill();
+}
 
-  if (targetStage === 0) {
-    state.sprout    = clamp01(state.sprout + sp*1.5);
-    state.branches  = clamp01(state.branches - sp);
-    state.flowers   = clamp01(state.flowers - sp);
-    state.fruits    = clamp01(state.fruits - sp*2);
-    state.leaves    = clamp01(state.leaves - sp);
-    state.flowerFade= clamp01(state.flowerFade - sp);
-  } else if (targetStage === 1) {
-    state.sprout    = clamp01(state.sprout + sp);
-    state.branches  = clamp01(state.branches + sp*0.6);
-    state.flowers   = clamp01(state.flowers - sp);
-    state.fruits    = clamp01(state.fruits - sp*2);
-    state.leaves    = clamp01(state.leaves - sp);
-    state.flowerFade= clamp01(state.flowerFade - sp);
-  } else if (targetStage === 2) {
-    state.sprout    = 1;
-    state.branches  = 1;
-    state.flowers   = clamp01(state.flowers + sp*0.7);
-    state.fruits    = clamp01(state.fruits - sp*2);
-    state.leaves    = clamp01(state.leaves - sp);
-    state.flowerFade= clamp01(state.flowerFade + sp*0.5);
-  } else if (targetStage === 3) {
-    state.sprout    = 1;
-    state.branches  = 1;
-    state.flowers   = clamp01(state.flowers - sp*0.5);
-    state.fruits    = clamp01(state.fruits + sp*0.5);
-    state.leaves    = clamp01(state.leaves - sp);
-    state.flowerFade= clamp01(state.flowerFade - sp*0.5);
-  } else if (targetStage === 4) {
-    state.sprout    = 1;
-    state.branches  = 1;
-    state.flowers   = clamp01(state.flowers - sp);
-    state.fruits    = clamp01(state.fruits - sp);
-    state.leaves    = clamp01(state.leaves + sp*0.6);
-    state.flowerFade= clamp01(state.flowerFade - sp);
+// ── Main loop ──
+let frame=0;
+const SP = 0.012; // transition speed per frame
+
+function loop() {
+  requestAnimationFrame(loop);
+  frame++;
+  const t = frame/60;
+
+  // Advance state
+  const tgt = targetStage;
+  const sp = SP;
+  state.sprout  = lerp(state.sprout,  tgt>=0?1:0, sp*2);
+  state.grow    = lerp(state.grow,    tgt>=1?1:0, sp*0.8);
+  state.flower  = lerp(state.flower,  tgt===2||tgt===3?1:0, sp*0.7);
+  state.fruit   = lerp(state.fruit,   tgt>=3?1:0, sp*0.5);
+  state.fall    = lerp(state.fall,    tgt===4?1:0, sp*0.6);
+
+  // Clear
+  ctx.clearRect(0,0,W,H);
+
+  // Background gradient by stage
+  const bgColors = [
+    ['#0d1117','#0d1117'],
+    ['#0d1520','#0a1018'],
+    ['#150818','#0d0d18'],
+    ['#180c08','#100808'],
+    ['#080808','#050505'],
+  ];
+  const bc = bgColors[targetStage];
+  const bg = ctx.createLinearGradient(0,0,0,H);
+  bg.addColorStop(0, bc[0]); bg.addColorStop(1, bc[1]);
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  // Ground glow
+  const gg = ctx.createRadialGradient(OX,OY,0,OX,OY,200);
+  gg.addColorStop(0,'rgba(40,60,30,0.35)');
+  gg.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=gg; ctx.fillRect(0,0,W,H);
+
+  ctx.save();
+  ctx.translate(OX, OY);
+
+  // ── Sprout ──
+  if (state.sprout > 0.01) {
+    const sh = 40 * easeBack(Math.min(1,state.sprout*2));
+    const sa = Math.min(1, state.grow > 0.3 ? 1-(state.grow-0.3)/0.4 : 1);
+    ctx.save();
+    ctx.globalAlpha = sa;
+    // stem
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-sh);
+    ctx.strokeStyle='#6aaa30'; ctx.lineWidth=3; ctx.lineCap='round'; ctx.stroke();
+    // tiny leaves
+    if (state.sprout > 0.5) {
+      const la = easeOut((state.sprout-0.5)*2);
+      ctx.globalAlpha=sa*la;
+      ctx.beginPath(); ctx.ellipse(-8,-sh*0.7,10,5,-0.5,0,Math.PI*2);
+      ctx.fillStyle='#7ac435'; ctx.fill();
+      ctx.beginPath(); ctx.ellipse(8,-sh*0.65,10,5,0.5,0,Math.PI*2);
+      ctx.fillStyle='#88cc40'; ctx.fill();
+    }
+    ctx.restore();
   }
 
-  // ── Apply: sprout ──
-  sproutMesh.scale.y = easeBack(clamp01(state.sprout*1.5));
-  sproutMesh.material.opacity = state.branches > 0.3 ? 1-state.branches : 1;
-
-  // ── Apply: branches ──
-  const totalB = branchMeshes.length;
-  for (let i=0; i<totalB; i++) {
-    const m = branchMeshes[i];
-    const threshold = m.userData.order / totalB;
-    const localT = clamp01((state.branches - threshold) / (1/totalB + 0.15));
-    m.scale.y = easeInOut(localT);
-  }
-
-  // ── Apply: flowers ──
-  flowerMat.opacity = state.flowers * state.flowerFade;
-  // Animate individual flower scales
-  const fAttr = flowerGeo.getAttribute('scale');
-  for (let i=0; i<FLOWER_COUNT; i++) {
-    const threshold = i/FLOWER_COUNT;
-    const t = clamp01((state.flowers - threshold*0.6) / 0.4);
-    fAttr.array[i] = easeBack(t) * state.flowerFade;
-  }
-  fAttr.needsUpdate = true;
-  flowerMat.size = 0.18 + Math.sin(elapsed*2)*0.02; // gentle pulse
-
-  // ── Apply: fruits ──
-  for (let i=0; i<fruitMeshes.length; i++) {
-    const t = clamp01((state.fruits - i/fruitMeshes.length*0.7)/0.3);
-    const s = easeBack(t);
-    fruitMeshes[i].scale.setScalar(s);
-    // slight sway
-    fruitMeshes[i].position.y += Math.sin(elapsed*1.5 + i)*0.0005;
-  }
-
-  // ── Apply: falling leaves ──
-  leafMat.opacity = state.leaves * 0.85;
-  if (state.leaves > 0.1) {
-    const posAttr = leafGeo.getAttribute('position');
-    for (let i=0; i<LEAF_COUNT; i++) {
-      const v = leafVel[i];
-      posAttr.array[i*3]   += v.vx + Math.sin(elapsed*0.8+v.phase)*0.008;
-      posAttr.array[i*3+1] += v.vy * state.leaves;
-      posAttr.array[i*3+2] += v.vz;
-      if (posAttr.array[i*3+1] < -0.5) {
-        posAttr.array[i*3]   = (Math.random()-.5)*10;
-        posAttr.array[i*3+1] = 10 + Math.random()*4;
-        posAttr.array[i*3+2] = (Math.random()-.5)*6;
+  // ── Branches ──
+  const growReveal = easeInOut(state.grow) * TOTAL;
+  if (state.grow > 0.01) {
+    for (let i=0;i<TOTAL;i++) {
+      const n = NODES[i];
+      const localT = clamp01((growReveal - i) / Math.max(1, TOTAL*0.04));
+      if (localT <= 0) continue;
+      const bAlpha = easeOut(localT);
+      // branch color darkens with depth
+      const lightness = Math.max(18, 40-n.depth*3);
+      ctx.beginPath();
+      ctx.moveTo(n.x1, n.y1); ctx.lineTo(n.x2, n.y2);
+      ctx.strokeStyle=`hsla(25,40%,${lightness}%,${bAlpha})`;
+      ctx.lineWidth=n.sw; ctx.lineCap='round'; ctx.stroke();
+    }
+    // green leaf dots on tips
+    if (state.grow > 0.6 && state.flower < 0.5) {
+      const leafAlpha = easeOut((state.grow-0.6)/0.4) * (1-state.flower*2);
+      for (const n of TIPS) {
+        ctx.beginPath(); ctx.arc(n.x2,n.y2, 3.5,0,Math.PI*2);
+        ctx.fillStyle=`rgba(100,180,60,${leafAlpha*0.6})`; ctx.fill();
       }
     }
-    posAttr.needsUpdate = true;
   }
 
-  // ── Ambient camera drift ──
-  camera.position.x = Math.sin(elapsed*0.12)*1.5;
-  camera.position.y = 4 + Math.sin(elapsed*0.08)*0.4;
-  camera.lookAt(0, 4, 0);
+  // ── Flowers ──
+  if (state.flower > 0.01) {
+    for (let i=0;i<FLOWERS.length;i++) {
+      const f = FLOWERS[i];
+      const delay = i/FLOWERS.length * 0.6;
+      const localT = clamp01((state.flower - delay)/0.4);
+      if (localT <= 0) continue;
+      const alpha = easeOut(localT) * (1 - state.fall*0.8);
+      const pulse = Math.sin(t*1.8 + f.phase)*0.5+0.5;
+      drawFlower(f.x, f.y, f.r*easeBack(localT), f.hue, alpha, pulse);
+    }
+  }
 
-  // ── Sky color by stage ──
-  const skyColors = [
-    new THREE.Color(0x050810),  // 发芽 — deep night
-    new THREE.Color(0x0a1520),  // 生长 — dawn
-    new THREE.Color(0x1a0a20),  // 开花 — dusk purple
-    new THREE.Color(0x150a08),  // 结果 — warm dusk
-    new THREE.Color(0x080808),  // 落叶 — dark
-  ];
-  const s1 = skyColors[Math.max(0,targetStage-1)] || skyColors[0];
-  const s2 = skyColors[targetStage];
-  scene.background = s1.clone().lerp(s2, state.leaves||state.fruits||state.flowers||state.branches||state.sprout);
+  // ── Fruits ──
+  if (state.fruit > 0.01) {
+    for (let i=0;i<FRUITS.length;i++) {
+      const f = FRUITS[i];
+      const delay = i/FRUITS.length * 0.5;
+      const localT = clamp01((state.fruit - delay)/0.5);
+      if (localT <= 0) continue;
+      const alpha = easeOut(localT) * (1-state.fall*0.7);
+      const sway = Math.sin(t*1.2+f.phase)*2*localT;
+      drawFruit(f.x, f.y, f.r*easeBack(localT), f.hue, alpha, sway);
+    }
+  }
 
-  renderer.render(scene, camera);
-});
+  ctx.restore(); // un-translate
 
-// ── Resize ──
-window.addEventListener('resize', () => {
-  camera.aspect = innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+  // ── Falling leaves ──
+  if (state.fall > 0.01) {
+    for (const l of LEAVES) {
+      l.x += l.vx * state.fall + Math.sin(t*0.8+l.phase)*0.5;
+      l.y += l.vy * state.fall;
+      l.rot += l.vrot * state.fall;
+      if (l.y > H+20) { l.y=-20-Math.random()*100; l.x=OX+(Math.random()-.5)*W*0.9; }
+      const alpha = Math.min(1, state.fall*1.5) * 0.8;
+      ctx.save();
+      ctx.translate(OX+l.x, OY+l.y);
+      ctx.rotate(l.rot);
+      ctx.beginPath();
+      ctx.ellipse(0,0,l.rx,l.ry,0,0,Math.PI*2);
+      ctx.fillStyle=`hsla(${l.hue},85%,52%,${alpha})`;
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+function clamp01(t){ return Math.max(0,Math.min(1,t)); }
+
+loop();
 </script>
 </body>
 </html>
