@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>桃树 · Peach Tree</title>
+<title>桃树 · Peach Tree v3</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { background:#87ceeb; overflow:hidden; font-family:'PingFang SC','Microsoft YaHei',sans-serif; }
@@ -36,11 +36,11 @@ body { background:#87ceeb; overflow:hidden; font-family:'PingFang SC','Microsoft
 <div id="title">PEACH TREE · 桃树生长记</div>
 <div id="caption">桃树苗</div>
 <div id="ui">
-  <button class="btn active" onclick="goStage(0)">🌱 桃树苗</button>
-  <button class="btn" onclick="goStage(1)">🌿 生长</button>
-  <button class="btn" onclick="goStage(2)">🌸 桃花</button>
-  <button class="btn" onclick="goStage(3)">🍑 水蜜桃</button>
-  <button class="btn" onclick="goStage(4)">🍂 落叶</button>
+  <button class="btn active" data-stage="0">🌱 桃树苗</button>
+  <button class="btn" data-stage="1">🌿 生长</button>
+  <button class="btn" data-stage="2">🌸 桃花</button>
+  <button class="btn" data-stage="3">🍑 水蜜桃</button>
+  <button class="btn" data-stage="4">🍂 落叶</button>
 </div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js"}}</script>
@@ -494,6 +494,11 @@ renderer.domElement.addEventListener('touchmove', e=>{
 const clock=new THREE.Clock();
 let elapsed=0;
 let autoOrbit=true; // gentle auto-rotate when not dragging
+
+// ── Button event binding (不依赖 window 全局) ──
+document.querySelectorAll('#ui .btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> goStage(parseInt(btn.dataset.stage)));
+});
 
 renderer.setAnimationLoop(()=>{
   const dt=clock.getDelta(); elapsed+=dt;
