@@ -136,12 +136,34 @@ fill.position.set(-10,12,8);
 scene.add(fill);
 
 // ── Ground ──
-const ground=new THREE.Mesh(
-  new THREE.PlaneGeometry(100,100),
-  new THREE.MeshLambertMaterial({color:0x3a7a20})
-);
-ground.rotation.x=-Math.PI/2; ground.receiveShadow=true;
-scene.add(ground);
+// ── Terrain: rolling hills ──
+const terrainW=120, terrainD=120, terrainSegs=80;
+const terrainGeo=new THREE.PlaneGeometry(terrainW,terrainD,terrainSegs,terrainSegs);
+const tPos=terrainGeo.attributes.position;
+for(let i=0;i<tPos.count;i++){
+  const x=tPos.getX(i), z=tPos.getY(i);
+  const h = Math.sin(x*0.12)*1.2 + Math.cos(z*0.09)*0.9
+           + Math.sin(x*0.25+z*0.18)*0.5 + Math.cos(x*0.08-z*0.15)*0.8;
+  // flatten center so tree base is flat
+  const d=Math.sqrt(x*x+z*z);
+  const flat=Math.max(0,1-d/8);
+  tPos.setZ(i, h*(1-flat));
+}
+terrainGeo.computeVertexNormals();
+const terrainMat=new THREE.MeshLambertMaterial({color:0x4a8a25, wireframe:false});
+const terrain=new THREE.Mesh(terrainGeo,terrainMat);
+terrain.rotation.x=-Math.PI/2;
+terrain.receiveShadow=true;
+scene.add(terrain);
+// grass color variation
+const grassColors=new Float32Array(tPos.count*3);
+for(let i=0;i<tPos.count;i++){
+  const h=tPos.getZ(i);
+  const c=new THREE.Color().setHSL(0.28+h*0.01, 0.55, 0.28+h*0.02);
+  grassColors[i*3]=c.r; grassColors[i*3+1]=c.g; grassColors[i*3+2]=c.b;
+}
+terrainGeo.setAttribute('color',new THREE.BufferAttribute(grassColors,3));
+terrainMat.vertexColors=true;
 
 // ── Build peach tree branches ──
 // Peach tree: short trunk, very wide spreading canopy
@@ -182,9 +204,10 @@ for(const b of branches){
   const e=new THREE.Vector3(b.ex,b.ey,b.ez);
   const d=e.clone().sub(s); const l=d.length();
   // Peach wood: reddish brown
-  const hue=0.06; const light=0.15+b.depth*0.008;
+  // Peach wood: reddish-brown, NOT green
+  const hue=0.055; const light=Math.max(0.12, 0.22-b.depth*0.012);
   const geo=new THREE.CylinderGeometry(b.rad*0.5,b.rad,l,6,1);
-  const mat=new THREE.MeshLambertMaterial({color:new THREE.Color().setHSL(hue,0.45,light)});
+  const mat=new THREE.MeshLambertMaterial({color:new THREE.Color().setHSL(hue,0.50,light)});
   const m=new THREE.Mesh(geo,mat);
   m.position.copy(s.clone().lerp(e,0.5));
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());
@@ -334,12 +357,15 @@ const FALL=500;
 const fallGeo=new THREE.BufferGeometry();
 const fallPos=new Float32Array(FALL*3);
 const fallVel=[];
+// Leaves start FROM tip positions, not random sky positions
 function resetLeaf(i){
-  fallPos[i*3]  =(Math.random()-.5)*18;
-  fallPos[i*3+1]=8+Math.random()*8;
-  fallPos[i*3+2]=(Math.random()-.5)*10;
-  fallVel[i]={vx:(Math.random()-.5)*0.05, vy:-(0.03+Math.random()*0.04),
-              vz:(Math.random()-.5)*0.02, phase:Math.random()*Math.PI*2};
+  // pick a random tip as starting point
+  const tip = allTipPos[Math.floor(Math.random()*allTipPos.length)];
+  fallPos[i*3]  = tip.x + (Math.random()-.5)*0.8;
+  fallPos[i*3+1]= tip.y + (Math.random()-.5)*0.4;
+  fallPos[i*3+2]= tip.z + (Math.random()-.5)*0.8;
+  fallVel[i]={vx:(Math.random()-.5)*0.04, vy:-(0.025+Math.random()*0.035),
+              vz:(Math.random()-.5)*0.03, phase:Math.random()*Math.PI*2};
 }
 for(let i=0;i<FALL;i++) resetLeaf(i);
 fallGeo.setAttribute('position',new THREE.BufferAttribute(fallPos,3));
@@ -465,11 +491,8 @@ renderer.setAnimationLoop(()=>{
     const t = clamp((bReveal-m.userData.id)/Math.max(1,TOTAL*0.05));
     m.visible = t > 0.01;  // 完全隐藏未生长的枝条
     m.scale.y = easeIO(t);
-    // leaf color tint: green tint grows in with branches
-    if(m.material && targetStage===1){
-      const g = clamp(t*1.2);
-      m.material.color.setHSL(0.06+g*0.28, 0.45-g*0.1, 0.15+g*0.05);
-    }
+    // keep reddish-brown always
+    m.material.color.setHSL(0.055, 0.50, Math.max(0.12, 0.22-m.userData.id/TOTAL*0.06));
   }
 
   // ── Particles (green leaves sync with grow) ──
