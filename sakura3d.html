@@ -284,7 +284,7 @@ function buildBranch(px,py,pz,dx,dy,dz,len,rad,depth){
     buildBranch(ex,ey,ez,mDir.x,mDir.y,mDir.z,lr*0.55,rad*0.50,depth+2);
   }
 }
-buildBranch(0,0,0, 0,1,0, 3.5, 0.20, 0);
+buildBranch(0,0,0, 0,1,0, 2.8, 0.22, 0);
 const TOTAL=branches.length;
 
 const branchMeshes=[];
@@ -468,9 +468,9 @@ document.querySelectorAll('#ui .btn').forEach(btn=>{
 });
 
 // ── Orbit controls ──
-let orbitTheta=0, orbitPhi=Math.PI/8, orbitRadius=20;
+let orbitTheta=0, orbitPhi=Math.PI/9, orbitRadius=16;
 let isDragging=false, lastX=0, lastY=0;
-const TARGET=new THREE.Vector3(0,4,0);
+const TARGET=new THREE.Vector3(0,3,0);
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
 
 renderer.domElement.addEventListener('mousedown',e=>{isDragging=true;lastX=e.clientX;lastY=e.clientY;});
@@ -532,12 +532,13 @@ renderer.setAnimationLoop(()=>{
       c.scale.setScalar(easeBack(Math.min(1,Math.max(0,(state.sprout-0.4)*2)))*sproutFade);
   });
 
-  // Branches reveal
-  const bReveal=easeIO(state.grow)*TOTAL;
+  // Branches reveal — always show at stages 0+
+  // At stage 0 (bud): show full branches but keep them thin/dark
+  const bReveal = targetStage===0 ? TOTAL : easeIO(state.grow)*TOTAL;
   for(const m of branchMeshes){
     const t=Math.min(1,Math.max(0,(bReveal-m.userData.id)/Math.max(1,TOTAL*0.05)));
-    m.visible=t>0.01;
-    m.scale.y=easeIO(t);
+    m.visible = t>0.01;
+    m.scale.y = targetStage===0 ? 1.0 : easeIO(t);
   }
 
   // Particles
