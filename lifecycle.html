@@ -48,13 +48,13 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 1.4;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 500);
-camera.position.set(0, 5, 18);
-camera.lookAt(0, 5, 0);
+camera.position.set(0, 7, 22);
+camera.lookAt(0, 7, 0);
 
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth/innerHeight;
@@ -64,11 +64,11 @@ window.addEventListener('resize', () => {
 
 // ── Sky (gradient + fog) ──
 const SKY_CONFIGS = [
-  { top:'#0a0e1a', bot:'#0d1825', fog:0x0a0e1a },  // 发芽 — deep night
-  { top:'#0d1e30', bot:'#1a2d1a', fog:0x0d1e30 },  // 生长 — dawn
-  { top:'#1a0820', bot:'#0d0a1a', fog:0x150a1a },  // 开花 — dusk
-  { top:'#1e1208', bot:'#0e0d10', fog:0x180e08 },  // 结果 — warm eve
-  { top:'#0e1008', bot:'#080808', fog:0x0a0a08 },  // 落叶 — autumn dusk
+  { top:'#87ceeb', bot:'#d0eeff', fog:0xc8e8f8 },  // 发芽 — 晴天蓝
+  { top:'#5bb8f5', bot:'#c2e8ff', fog:0xb0dcf8 },  // 生长 — 明亮蓝天
+  { top:'#6ab4f0', bot:'#e8d0f8', fog:0xc0d8f8 },  // 开花 — 淡紫蓝
+  { top:'#68b0e8', bot:'#f8ddc0', fog:0xc8d8e8 },  // 结果 — 暖蓝
+  { top:'#a8c4d8', bot:'#d8c890', fog:0xc0b880 },  // 落叶 — 秋日灰蓝
 ];
 
 // Sky plane (canvas texture)
@@ -88,11 +88,29 @@ function updateSky(cfg) {
   skyTex.needsUpdate = true;
   scene.fog = new THREE.Fog(cfg.fog, 30, 120);
   scene.background = new THREE.Color(cfg.top);
+  // clouds
+  if (!scene.userData.clouds) {
+    scene.userData.clouds = [];
+    const cloudMat = new THREE.MeshLambertMaterial({color:0xffffff,transparent:true,opacity:0.82});
+    for (let i=0;i<8;i++) {
+      const g = new THREE.Group();
+      const n = 3+Math.floor(Math.random()*3);
+      for (let k=0;k<n;k++) {
+        const r = 1.5+Math.random()*2;
+        const s = new THREE.Mesh(new THREE.SphereGeometry(r,8,6), cloudMat.clone());
+        s.position.set((Math.random()-.5)*r*2, (Math.random()-.5)*r*0.4, (Math.random()-.5)*r);
+        g.add(s);
+      }
+      g.position.set((Math.random()-.5)*80, 22+Math.random()*12, -30-Math.random()*40);
+      scene.add(g);
+      scene.userData.clouds.push({mesh:g, speed:0.005+Math.random()*0.008});
+    }
+  }
 }
 updateSky(SKY_CONFIGS[0]);
 
 // ── Lights ──
-const ambientLight = new THREE.AmbientLight(0x334466, 0.8);
+const ambientLight = new THREE.AmbientLight(0xaaccff, 1.5);
 scene.add(ambientLight);
 
 const sunLight = new THREE.DirectionalLight(0xfff0dd, 2.0);
@@ -117,7 +135,7 @@ scene.add(rimLight);
 
 // ── Ground ──
 const groundGeo = new THREE.PlaneGeometry(80, 80, 1, 1);
-const groundMat = new THREE.MeshLambertMaterial({ color:0x0d1a0a });
+const groundMat = new THREE.MeshLambertMaterial({ color:0x2a5a18 });
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.rotation.x = -Math.PI/2;
 ground.receiveShadow = true;
@@ -144,7 +162,7 @@ function buildBranch(px,py,pz, dx,dy,dz, len, radius, depth) {
   rDir.applyAxisAngle(up, (depth%2===0?0.2:-0.2));
   buildBranch(ex,ey,ez, rDir.x,rDir.y,rDir.z, lr*0.95, radius*0.68, depth+1);
 }
-buildBranch(0,0,0, 0,1,0, 2.8, 0.14, 0);
+buildBranch(0,0,0, 0,1,0, 4.2, 0.18, 0);  // 更高的树
 
 const TOTAL = branches.length;
 const tips = branches.filter(b=>b.depth>=6);
@@ -331,8 +349,10 @@ window.goStage = s => {
   // adjust lights
   const sunIntensities=[0.6,1.2,0.9,1.5,0.7];
   sunLight.intensity = sunIntensities[s];
-  const ambColors=[0x223355,0x334422,0x331122,0x332211,0x222211];
+  const ambColors=[0x88aadd,0x88aacc,0x9988cc,0xaa9988,0x998877];
   ambientLight.color.setHex(ambColors[s]);
+  // 天空颜色同步更新
+  scene.background = new THREE.Color(SKY_CONFIGS[s].top);
 };
 
 // ── Helpers ──
@@ -358,9 +378,11 @@ renderer.setAnimationLoop(()=>{
   state.flower    = lerp(state.flower,   targetStage===2?1:0, sp*0.6);
   state.fruit     = lerp(state.fruit,    targetStage===3?1:0, sp*0.5);
   state.fall      = lerp(state.fall,     targetStage===4?1:0, sp*0.55);
+  // 落叶阶段：sprout叶片消失
+  const sproutVisible = targetStage < 4;
 
-  // Sprout
-  const sproutFade = targetStage < 2 ? 1 : clamp(1-(state.grow-0.5)/0.3);
+  // Sprout — 完全隐藏在生长/落叶阶段
+  const sproutFade = clamp(1 - state.grow/0.4) * (targetStage < 4 ? 1 : clamp(1-state.fall/0.3));
   stemMesh.scale.y  = easeBack(clamp(state.sprout*1.8)) * sproutFade;
   sproutGroup.children.forEach(c=>{
     if (c.userData.isSproutLeaf) {
@@ -403,9 +425,17 @@ renderer.setAnimationLoop(()=>{
 
   // Camera gentle orbit
   camera.position.x = Math.sin(elapsed*0.1)*2.5;
-  camera.position.z = 18 + Math.sin(elapsed*0.07)*1.5;
-  camera.position.y = 5  + Math.sin(elapsed*0.08)*0.5;
-  camera.lookAt(0, 5, 0);
+  camera.position.z = 22 + Math.sin(elapsed*0.07)*1.5;
+  camera.position.y = 6  + Math.sin(elapsed*0.08)*0.5;
+  camera.lookAt(0, 7, 0);
+
+  // 云朵漂移
+  if (scene.userData.clouds) {
+    for (const c of scene.userData.clouds) {
+      c.mesh.position.x += c.speed;
+      if (c.mesh.position.x > 60) c.mesh.position.x = -60;
+    }
+  }
 
   // Sun drift
   sunLight.position.x = 8+Math.sin(elapsed*0.05)*3;
