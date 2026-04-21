@@ -124,61 +124,125 @@ const petals = Array.from({length:6}, (_, i) => ({
 // ── Museum label (Pretext-powered) ──
 const LABEL = {
   title:  'Cherry Blossom Viewing Canopy',
-  latin:  'Prunus serrulata · Rosaceae',
+  latin:  'Prunus serrulata \u00b7 Rosaceae',
   body:   'Installed 2024. This specimen blooms for approximately two weeks each spring. Please admire from a safe distance to protect the root system.',
   note:   'Please do not approach.',
 };
-const LABEL_W = 220;   // card inner width (px)
+const LABEL_W = 220;
 const LABEL_PAD = 16;
 let labelLines = null;
+let labelCard = null;  // { cardX, cardY, cardW, totalH, sections }
+
+// Fall state for the label card
+const labelFall = {
+  y: -200,          // current y offset (absolute, starts above canvas)
+  vy: 0,
+  rot: 0,           // tilt angle (radians)
+  vrot: 0,
+  swayPhase: Math.random() * Math.PI * 2,
+  landed: false,
+  landFrame: -1,
+  alpha: 0,
+};
 
 function prepareLabel() {
-  const { prepare, layout, prepareWithSegments, layoutWithLines } = window.__Pretext__;
+  const { prepareWithSegments, layoutWithLines } = window.__Pretext__;
 
-  // Measure body text at card width for exact card height
-  const bodyFont = '13px "Palatino Linotype","Book Antiqua",Palatino,serif';
+  const bodyFont  = '13px "Palatino Linotype","Book Antiqua",Palatino,serif';
   const titleFont = 'bold 14px "Palatino Linotype","Book Antiqua",Palatino,serif';
   const latinFont = 'italic 12px "Palatino Linotype","Book Antiqua",Palatino,serif';
   const noteFont  = 'italic 13px "Palatino Linotype","Book Antiqua",Palatino,serif';
-
-  const titlePrep = prepareWithSegments(LABEL.title, titleFont);
-  const latinPrep = prepareWithSegments(LABEL.latin, latinFont);
-  const bodyPrep  = prepareWithSegments(LABEL.body,  bodyFont);
-  const notePrep  = prepareWithSegments(LABEL.note,  noteFont);
-
   const LH = 20;
-  labelLines = {
-    title: layoutWithLines(titlePrep, LABEL_W, LH).lines,
-    latin: layoutWithLines(latinPrep, LABEL_W, LH).lines,
-    body:  layoutWithLines(bodyPrep,  LABEL_W, LH).lines,
-    note:  layoutWithLines(notePrep,  LABEL_W, LH).lines,
-    lh: LH,
-  };
-}
 
-function drawLabel(alpha) {
-  if (!labelLines) return;
-  const { lh, title, latin, body, note } = labelLines;
-
-  // total card height
   const sections = [
-    { lines: title, font: 'bold 14px "Palatino Linotype","Book Antiqua",Palatino,serif', color: '#444', gap: 4 },
-    { lines: latin, font: 'italic 12px "Palatino Linotype","Book Antiqua",Palatino,serif', color: '#888', gap: 10 },
-    { lines: body,  font: '13px "Palatino Linotype","Book Antiqua",Palatino,serif', color: '#666', gap: 12 },
-    { lines: note,  font: 'italic 13px "Palatino Linotype","Book Antiqua",Palatino,serif', color: '#c03055', gap: 0 },
+    { lines: layoutWithLines(prepareWithSegments(LABEL.title, titleFont), LABEL_W, LH).lines,
+      font: titleFont, color: '#444', gap: 4 },
+    { lines: layoutWithLines(prepareWithSegments(LABEL.latin, latinFont), LABEL_W, LH).lines,
+      font: latinFont, color: '#888', gap: 10 },
+    { lines: layoutWithLines(prepareWithSegments(LABEL.body, bodyFont),   LABEL_W, LH).lines,
+      font: bodyFont,  color: '#666', gap: 12 },
+    { lines: layoutWithLines(prepareWithSegments(LABEL.note, noteFont),   LABEL_W, LH).lines,
+      font: noteFont,  color: '#c03055', gap: 0 },
   ];
+
   let totalH = LABEL_PAD * 2;
   sections.forEach((s, i) => {
-    totalH += s.lines.length * lh;
+    totalH += s.lines.length * LH;
     if (i < sections.length - 1) totalH += s.gap;
   });
 
   const cardW = LABEL_W + LABEL_PAD * 2;
   const cardX = (W - cardW) / 2;
-  const cardY = H - 30 - totalH;
+  const targetY = H - 30 - totalH;
+
+  labelLines = { lh: LH, sections };
+  labelCard  = { cardX, targetY, cardW, totalH, lh: LH, sections };
+
+  // Start position: slightly left of center, above canvas
+  labelFall.y    = -totalH - 20;
+  labelFall.vy   = 2.2;
+  labelFall.rot  = (Math.random() - 0.5) * 0.12;
+  labelFall.vrot = (Math.random() - 0.5) * 0.006;
+}
+
+function springVal(cur, target, vel, k, d) {
+  const f = (target - cur) * k - vel * d;
+  return { pos: cur + vel, vel: vel + f };
+}
+
+function updateLabel(globalFrame) {
+  if (!labelCard) return;
+  const FALL_START = TEXT_START;
+  if (globalFrame < FALL_START) return;
+  const t = globalFrame - FALL_START;
+
+  labelFall.alpha = Math.min(1, t / 25);
+
+  if (labelFall.landed) {
+    // damp out residual tilt
+    labelFall.rot  *= 0.88;
+    labelFall.vrot *= 0.88;
+    return;
+  }
+
+  const { targetY } = labelCard;
+  const sway = Math.sin(t * 0.045 + labelFall.swayPhase) * 0.4;
+  labelFall.rot += labelFall.vrot + sway * 0.003;
+
+  const dist = targetY - labelFall.y;
+
+  if (Math.abs(dist) < 80) {
+    // Spring homing phase
+    const sy = springVal(labelFall.y, targetY, labelFall.vy, 0.10, 0.52);
+    labelFall.y  = sy.pos;
+    labelFall.vy = sy.vel;
+    labelFall.vrot *= 0.80;
+
+    if (Math.abs(dist) < 1.2) {
+      labelFall.y = targetY;
+      labelFall.vy = 0;
+      labelFall.landed = true;
+      labelFall.landFrame = globalFrame;
+    }
+  } else {
+    // Free fall with sway
+    labelFall.y  += labelFall.vy + sway;
+    labelFall.vy += 0.08;  // gentle gravity
+    labelFall.vy  = Math.min(labelFall.vy, 5.5);
+  }
+}
+
+function drawLabel() {
+  if (!labelCard || labelFall.alpha <= 0) return;
+  const { cardX, cardW, totalH, lh, sections } = labelCard;
+  const cardY = labelFall.y;
+  const cx = cardX + cardW / 2;  // pivot around card center
 
   ctx.save();
-  ctx.globalAlpha = alpha;
+  ctx.globalAlpha = labelFall.alpha;
+  ctx.translate(cx, cardY + totalH / 2);
+  ctx.rotate(labelFall.rot);
+  ctx.translate(-cx, -(cardY + totalH / 2));
 
   // card background
   ctx.fillStyle = 'rgba(250,248,244,0.94)';
@@ -319,11 +383,9 @@ function loop(){
     drawRope(Math.min(1,Math.max(0,(ft-40)/30)),414,Math.min(1,Math.max(0,(ft-40)/30)));
   }
 
-  // museum label
-  if(frame>TEXT_START){
-    const ta=Math.min(1,(frame-TEXT_START)/30);
-    drawLabel(ta);
-  }
+  // museum label fall animation
+  updateLabel(frame);
+  drawLabel();
 
   // petals
   if(frame>165){

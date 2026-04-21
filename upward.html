@@ -150,38 +150,116 @@ const POEM_TEXT = '桃之夭夭，灼灼其华。\n之子于归，宜其室家�
 const POEM_FONT = '20px "PingFang SC","Microsoft YaHei",serif';
 const POEM_LINE_H = 34;
 const POEM_MAX_W = 180;
-let poemLines = null; // filled by preparePoem()
+let poemLines = null;
+
+// Per-line fall state
+let lineParticles = [];
 
 function preparePoem() {
-  // Pretext: measure + segment once, layout is pure arithmetic after this
   const { prepareWithSegments, layoutWithLines } = window.__Pretext__;
   const prepared = prepareWithSegments(POEM_TEXT, POEM_FONT, { whiteSpace: 'pre-wrap' });
-  const result = layoutWithLines(prepared, POEM_MAX_W, POEM_LINE_H);
-  poemLines = result.lines; // [{text, width, ...}, ...]
-}
-
-function drawPoem(alpha) {
-  if (!poemLines) return;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.font = POEM_FONT;
-  ctx.textAlign = 'right';
+  poemLines = layoutWithLines(prepared, POEM_MAX_W, POEM_LINE_H).lines;
 
   const totalH = poemLines.length * POEM_LINE_H;
-  // anchor: right side, vertically centered in lower-right area
   const xRight = W - 28;
-  const yTop = H - 60 - totalH;
+  const yTop   = H - 60 - totalH;
 
-  poemLines.forEach((line, i) => {
-    const y = yTop + i * POEM_LINE_H + POEM_LINE_H * 0.8;
-    // subtle text shadow
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 3;
-    ctx.strokeText(line.text, xRight, y);
-    ctx.fillStyle = 'rgba(50,32,28,0.88)';
-    ctx.fillText(line.text, xRight, y);
+  // Each line gets its own petal-like fall trajectory
+  lineParticles = poemLines.map((line, i) => {
+    const targetX = xRight;
+    const targetY = yTop + i * POEM_LINE_H + POEM_LINE_H * 0.8;
+    return {
+      text: line.text,
+      tx: targetX,           // target x
+      ty: targetY,           // target y
+      x: targetX + (Math.random() - 0.5) * 120,  // start scattered
+      y: -30 - i * 18,       // start above canvas, staggered
+      rot: (Math.random() - 0.5) * 0.5,          // initial tilt
+      vx: (Math.random() - 0.5) * 1.2,
+      vy: 1.8 + Math.random() * 1.2,
+      vrot: (Math.random() - 0.5) * 0.03,
+      phase: Math.random() * Math.PI * 2,        // swaying phase
+      landed: false,
+      landFrame: -1,
+      alpha: 0,
+    };
   });
-  ctx.restore();
+}
+
+// Spring-damp approach to target
+function spring(cur, target, vel, stiffness, damping) {
+  const force = (target - cur) * stiffness - vel * damping;
+  return { pos: cur + vel, vel: vel + force };
+}
+
+function updatePoem(globalFrame) {
+  if (!lineParticles.length) return;
+  const FALL_START = 150;   // frame when fall begins
+  if (globalFrame < FALL_START) return;
+  const t = globalFrame - FALL_START;
+
+  lineParticles.forEach((p, i) => {
+    const delay = i * 18;   // each line starts a bit later
+    if (t < delay) return;
+    const lt = t - delay;
+    p.alpha = Math.min(1, lt / 20);
+
+    if (p.landed) {
+      // gentle spring settle after landing
+      if (globalFrame - p.landFrame < 40) {
+        const sf = (globalFrame - p.landFrame) / 40;
+        p.rot = p.rot * (1 - sf * 0.18);  // tilt decays to 0
+      } else {
+        p.rot = 0;
+      }
+      return;
+    }
+
+    // Petal-like free fall with horizontal sway
+    const sway = Math.sin(lt * 0.06 + p.phase) * 0.5;
+    p.x += p.vx + sway;
+    p.y += p.vy;
+    p.rot += p.vrot;
+
+    // Proximity to target → switch to spring homing
+    const dx = p.tx - p.x;
+    const dy = p.ty - p.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < 60 || p.y > p.ty) {
+      // Spring pull to target
+      const sx = spring(p.x, p.tx, p.vx, 0.12, 0.55);
+      const sy = spring(p.y, p.ty, p.vy, 0.14, 0.58);
+      p.x = sx.pos; p.vx = sx.vel;
+      p.y = sy.pos; p.vy = sy.vel;
+      p.vrot *= 0.82;
+
+      if (dist < 1.5) {
+        p.x = p.tx; p.y = p.ty;
+        p.landed = true;
+        p.landFrame = globalFrame;
+      }
+    }
+  });
+}
+
+function drawPoem() {
+  if (!lineParticles.length) return;
+  lineParticles.forEach(p => {
+    if (p.alpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.font = POEM_FONT;
+    ctx.textAlign = 'right';
+    // soft glow outline
+    ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(p.text, 0, 0);
+    ctx.fillStyle = 'rgba(50,32,28,0.9)';
+    ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+  });
 }
 
 // ── Animation ──
@@ -245,11 +323,9 @@ function animate() {
     }
   }
 
-  // poem fades in after branches mostly done
-  if (frame > 150) {
-    const ta = Math.min(1, (frame-150)/60);
-    drawPoem(ta);
-  }
+  // poem petal-fall animation
+  updatePoem(frame);
+  drawPoem();
 }
 
 // Load Pretext from CDN, then start
