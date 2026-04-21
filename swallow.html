@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>燕返</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: #ece8e0;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; overflow: hidden;
+    font-family: serif;
+  }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script type="module">
+import { prepareWithSegments, layoutWithLines } from 'https://esm.sh/@chenglou/pretext';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 520, H = 680;
+canvas.width = W; canvas.height = H;
+
+// ── 信纸参数 ──
+const PAPER = {
+  x: 80, y: 60,
+  w: 360, h: 520,
+  lineH: 28,           // 行高
+  marginL: 52,         // 左边距（红线右侧）
+  marginR: 28,
+  marginT: 36,
+  lineColor: 'rgba(100,140,200,0.28)',
+  redLine: 'rgba(200,60,60,0.55)',
+};
+
+// ── 信件文字（张爱玲 → 胡兰成）──
+const LETTER_LINES = [
+  '兰成，',
+  '经过一年半的长时间考虑，我已',
+  '决定，不想再拖累你了。',
+  '',
+  '你是懂我的，懂我深处那些连我',
+  '自己都说不清的东西。那时我以',
+  '为，能握住的就是幸福。',
+  '',
+  '后来我知道了你与小周的事。我',
+  '压着心里的火，试图去理解，去',
+  '包容。可终究是徒劳。',
+  '',
+  '随附稿酬三十万法郎，算是这段',
+  '感情的终结。此后你不必再来，',
+  '来信我也不会看的。',
+  '',
+  '                        爱玲',
+  '              一九四七年·六月',
+];
+
+const FONT_BODY = '15px "Songti SC","SimSun","STSong",serif';
+const FONT_SIGN = 'italic 14px "Songti SC","SimSun",serif';
+const LINE_H    = PAPER.lineH;
+
+// ── 燕子粒子 ──
+const NUM_SWALLOWS = 60;
+let swallows = [];
+
+function makeSwallow(fromPaper) {
+  // 起始位置：信纸内随机点
+  const ox = fromPaper
+    ? PAPER.x + PAPER.marginL + Math.random() * (PAPER.w - PAPER.marginL - PAPER.marginR)
+    : Math.random() * W;
+  const oy = fromPaper
+    ? PAPER.y + PAPER.marginT + Math.random() * (PAPER.h - PAPER.marginT - 40)
+    : Math.random() * H;
+
+  const angle = Math.random() * Math.PI * 2;
+  const speed = fromPaper ? 0.4 + Math.random() * 0.6 : 0.2 + Math.random() * 0.4;
+
+  return {
+    x: ox, y: oy,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    size: 4 + Math.random() * 5,
+    alpha: fromPaper ? 0 : 0.15 + Math.random() * 0.2,
+    alphaTarget: fromPaper ? 0.7 + Math.random() * 0.3 : 0.15 + Math.random() * 0.2,
+    wingPhase: Math.random() * Math.PI * 2,
+    wingSpeed: 0.08 + Math.random() * 0.06,
+    burst: fromPaper,
+    delay: fromPaper ? Math.random() * 80 : 0,
+    born: false,
+  };
+}
+
+// 背景常驻燕子（少量，在整个画面漂浮）
+for (let i = 0; i < 8; i++) swallows.push(makeSwallow(false));
+
+// ── 绘制燕子（M形贝塞尔翅膀）──
+function drawSwallow(x, y, size, wingAngle, alpha) {
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(x, y);
+
+  // 翅膀张合：wingAngle 0=展开 1=收拢
+  const spread = Math.cos(wingAngle) * 0.4 + 0.6; // 0.2~1.0
+  const hw = size * spread;      // 半翼展
+  const dip = size * 0.35;       // 翼弯曲幅度
+
+  ctx.beginPath();
+  // 左翼
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(-hw * 0.5, -dip, -hw, -dip * 0.3, -hw, dip * 0.2);
+  ctx.bezierCurveTo(-hw * 0.5, dip * 0.6, -hw * 0.2, dip * 0.2, 0, 0);
+  // 右翼
+  ctx.moveTo(0, 0);
+  ctx.bezierCurveTo(hw * 0.5, -dip, hw, -dip * 0.3, hw, dip * 0.2);
+  ctx.bezierCurveTo(hw * 0.5, dip * 0.6, hw * 0.2, dip * 0.2, 0, 0);
+  // 尾羽
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-size * 0.25, size * 0.55);
+  ctx.moveTo(0, 0);
+  ctx.lineTo(size * 0.25, size * 0.55);
+
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fill();
+  ctx.restore();
+}
+
+// ── 绘制信纸 ──
+function drawPaper(paperAlpha) {
+  ctx.save();
+  ctx.globalAlpha = paperAlpha;
+
+  // 纸张阴影
+  ctx.shadowColor = 'rgba(0,0,0,0.12)';
+  ctx.shadowBlur = 18;
+  ctx.shadowOffsetX = 4;
+  ctx.shadowOffsetY = 6;
+
+  // 纸张底色（略带米黄）
+  ctx.fillStyle = '#faf8f3';
+  ctx.fillRect(PAPER.x, PAPER.y, PAPER.w, PAPER.h);
+  ctx.shadowColor = 'transparent';
+
+  // 横线
+  const lineCount = Math.floor((PAPER.h - PAPER.marginT - 20) / LINE_H);
+  for (let i = 0; i <= lineCount; i++) {
+    const ly = PAPER.y + PAPER.marginT + i * LINE_H;
+    if (ly > PAPER.y + PAPER.h - 20) break;
+    ctx.beginPath();
+    ctx.moveTo(PAPER.x + 8, ly);
+    ctx.lineTo(PAPER.x + PAPER.w - 8, ly);
+    ctx.strokeStyle = PAPER.lineColor;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
+
+  // 红色竖线（左页边距）
+  const rx = PAPER.x + PAPER.marginL - 8;
+  ctx.beginPath();
+  ctx.moveTo(rx, PAPER.y + 12);
+  ctx.lineTo(rx, PAPER.y + PAPER.h - 12);
+  ctx.strokeStyle = PAPER.redLine;
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // 纸张边框（淡）
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(PAPER.x, PAPER.y, PAPER.w, PAPER.h);
+
+  ctx.restore();
+}
+
+// ── 绘制文字（逐字打字机效果，Pretext 计算行位置）──
+let textProgress = 0;   // 已显示字符总数（含所有行）
+let totalChars   = 0;
+
+// 预计算每行文字的 x/y
+const textRows = [];
+LETTER_LINES.forEach((line, i) => {
+  const y = PAPER.y + PAPER.marginT + (i + 0.8) * LINE_H;
+  const x = PAPER.x + PAPER.marginL;
+  textRows.push({ text: line, x, y, font: FONT_BODY });
+  totalChars += line.length;
+});
+
+function drawText(progress) {
+  ctx.save();
+  let drawn = 0;
+  for (const row of textRows) {
+    if (drawn >= progress) break;
+    const chars = Math.min(row.text.length, progress - drawn);
+    const visible = row.text.slice(0, chars);
+    ctx.font = row.font;
+    ctx.fillStyle = 'rgba(30,20,15,0.88)';
+    ctx.textAlign = 'left';
+    ctx.fillText(visible, row.x, row.y);
+
+    // 光标（最后一行末尾闪烁）
+    if (chars < row.text.length || drawn + chars < progress) {
+      drawn += row.text.length;
+      continue;
+    }
+    drawn += chars;
+  }
+  ctx.restore();
+}
+
+// ── 红色蜡封印章（信封封蜡） ──
+function drawWaxSeal(alpha) {
+  if (alpha <= 0) return;
+  const sx = PAPER.x + PAPER.w - 52;
+  const sy = PAPER.y + PAPER.h - 48;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  // 蜡封圆形
+  const g = ctx.createRadialGradient(sx-3, sy-3, 2, sx, sy, 18);
+  g.addColorStop(0, '#e85555');
+  g.addColorStop(0.6, '#c03040');
+  g.addColorStop(1, '#8a1a20');
+  ctx.beginPath(); ctx.arc(sx, sy, 18, 0, Math.PI*2);
+  ctx.fillStyle = g; ctx.fill();
+  // 蜡封纹理（花瓣形）
+  ctx.strokeStyle = 'rgba(255,200,200,0.4)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 6; i++) {
+    const a = (i/6)*Math.PI*2;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + Math.cos(a)*14, sy + Math.sin(a)*14);
+    ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(255,180,180,0.35)'; ctx.fill();
+  ctx.restore();
+}
+
+// ── 标题"燕返" ──
+function drawTitle(alpha) {
+  if (alpha <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = '28px "Songti SC","SimSun",serif';
+  ctx.fillStyle = '#2a1f14';
+  ctx.textAlign = 'center';
+  ctx.fillText('燕  返', W / 2, PAPER.y - 22);
+
+  // 副标题
+  ctx.font = '12px "Songti SC","SimSun",serif';
+  ctx.fillStyle = 'rgba(80,60,40,0.6)';
+  ctx.fillText('似曾相识燕归来', W / 2, PAPER.y - 6);
+  ctx.restore();
+}
+
+// ── 动画状态机 ──
+// Phase 0: 纸张淡入 (0~60)
+// Phase 1: 打字机写信 (60~60+totalChars*1.5)
+// Phase 2: 蜡封出现 (写完后30帧)
+// Phase 3: 燕子从信中爆发 (蜡封后40帧)
+// Phase 4: 燕子满屏飞散，文字/纸张渐淡
+// Phase 5: 标题淡入
+
+let frame = 0;
+let burstDone = false;
+
+function getPhase() {
+  const p1end = 60 + totalChars * 1.5;
+  const p2end = p1end + 30;
+  const p3end = p2end + 40;
+  const p4end = p3end + 160;
+  if (frame < 60)    return { phase: 0, t: frame / 60 };
+  if (frame < p1end) return { phase: 1, t: (frame-60) / (p1end-60) };
+  if (frame < p2end) return { phase: 2, t: (frame-p1end) / 30 };
+  if (frame < p3end) return { phase: 3, t: (frame-p2end) / 40 };
+  if (frame < p4end) return { phase: 4, t: (frame-p3end) / 160 };
+  return { phase: 5, t: Math.min(1, (frame-p4end) / 60) };
+}
+
+function easeOut(t) { return 1 - Math.pow(1-t, 2); }
+function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+
+function tick() {
+  requestAnimationFrame(tick);
+  frame++;
+
+  const { phase, t } = getPhase();
+
+  // 背景
+  ctx.fillStyle = '#ece8e0';
+  ctx.fillRect(0, 0, W, H);
+
+  // 背景常驻燕子（一直在飞）
+  for (const s of swallows) {
+    if (s.burst) continue;
+    s.x += s.vx + Math.sin(frame*0.012 + s.wingPhase)*0.3;
+    s.y += s.vy + Math.cos(frame*0.009 + s.wingPhase)*0.2;
+    s.wingPhase += s.wingSpeed;
+    if (s.x < -20) s.x = W+10;
+    if (s.x > W+20) s.x = -10;
+    if (s.y < -20) s.y = H+10;
+    if (s.y > H+20) s.y = -10;
+    drawSwallow(s.x, s.y, s.size, s.wingPhase, s.alpha * (phase >= 4 ? 1 : 0.3));
+  }
+
+  // Phase 0: 纸张淡入
+  if (phase >= 0) {
+    const paperA = phase === 0 ? easeOut(t) : 1;
+    const paperFade = phase === 4 ? Math.max(0, 1 - t*1.4) : phase === 5 ? 0 : 1;
+    drawPaper(paperA * paperFade);
+  }
+
+  // Phase 1: 打字机
+  if (phase >= 1) {
+    const p1end = 60 + totalChars * 1.5;
+    const textFade = phase === 4 ? Math.max(0, 1 - t*1.2) : phase === 5 ? 0 : 1;
+    textProgress = phase === 1
+      ? Math.floor(t * totalChars)
+      : totalChars;
+    ctx.save(); ctx.globalAlpha = textFade;
+    drawText(textProgress);
+    ctx.restore();
+  }
+
+  // Phase 2: 蜡封
+  if (phase >= 2) {
+    const sealA = phase === 2 ? easeOut(t) : 1;
+    const sealFade = phase >= 4 ? Math.max(0, 1 - t) : 1;
+    drawWaxSeal(sealA * sealFade);
+  }
+
+  // Phase 3: 燕子爆发（从信纸中涌出）
+  if (phase === 3 && !burstDone) {
+    // 一次性生成爆发燕群
+    for (let i = 0; i < NUM_SWALLOWS; i++) {
+      swallows.push(makeSwallow(true));
+    }
+    burstDone = true;
+  }
+
+  // 爆发燕子更新 & 绘制
+  if (phase >= 3) {
+    for (const s of swallows) {
+      if (!s.burst) continue;
+      s.delay--;
+      if (s.delay > 0) continue;
+      if (!s.born) { s.born = true; }
+
+      // 加速飞出
+      s.vx *= 1.012;
+      s.vy *= 1.012;
+      s.x += s.vx;
+      s.y += s.vy;
+      s.wingPhase += s.wingSpeed;
+      s.alpha = Math.min(s.alphaTarget, s.alpha + 0.04);
+
+      // 飞出画面后重置为漂浮状态
+      if (s.x < -40 || s.x > W+40 || s.y < -40 || s.y > H+40) {
+        s.x = Math.random() * W;
+        s.y = Math.random() * H;
+        s.vx = (Math.random()-0.5)*0.5;
+        s.vy = (Math.random()-0.5)*0.5;
+        s.burst = false;
+        s.alphaTarget = 0.15 + Math.random()*0.2;
+      }
+
+      drawSwallow(s.x, s.y, s.size, s.wingPhase, s.alpha);
+    }
+  }
+
+  // Phase 5: 标题淡入
+  if (phase === 5) {
+    drawTitle(easeOut(t));
+  }
+}
+
+tick();
+</script>
+</body>
+</html>
