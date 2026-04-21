@@ -18,25 +18,28 @@ const ctx = canvas.getContext('2d');
 const W = 520, H = 700;
 canvas.width = W; canvas.height = H;
 
-const CX = W / 2, CY = H / 2 - 20;
-const MAX_R = 220;
+const CX = W / 2, CY = H * 0.42;  // 中心偏上，下方留白
+const MAX_R = 200;
 
 // ══════════════════════════════════════
-//  粒子（浅色背景版：深蓝色粒子）
+//  粒子（浅色背景版：深蓝色粒子，有旋臂结构）
 // ══════════════════════════════════════
-const PARTICLE_COUNT = 320;
+const PARTICLE_COUNT = 360;
+const ARM_COUNT = 3;  // 螺旋臂数量
 
 function makeParticle() {
-  const angle  = Math.random() * Math.PI * 2;
-  const radius = 40 + Math.random() * (MAX_R - 40);
+  // 偏向某条旋臂角度
+  const armBase = (Math.floor(Math.random() * ARM_COUNT) / ARM_COUNT) * Math.PI * 2;
+  const armSpread = 0.3 + Math.random() * 0.5;
+  const angle  = armBase + armSpread;
+  const radius = 18 + Math.random() * (MAX_R - 18);
   return {
     angle,
     radius,
-    speed:   0.012 + Math.random() * 0.018,   // 角速度
-    shrink:  0.10  + Math.random() * 0.18,     // 每帧向中心收缩
-    size:    0.8   + Math.random() * 1.6,
-    alpha:   0.3   + Math.random() * 0.6,
-    // 颜色：外圈深蓝，内圈浅蓝
+    speed:   0.010 + Math.random() * 0.016,
+    shrink:  0.08  + Math.random() * 0.16,
+    size:    0.6   + Math.random() * 1.8,
+    alpha:   0.25  + Math.random() * 0.65,
     hue:     200   + Math.random() * 25,
   };
 }
@@ -81,10 +84,12 @@ function tick() {
     p.angle  += p.speed;
     p.radius -= p.shrink;
     if (p.radius < 6) {
-      p.angle  = Math.random() * Math.PI * 2;
-      p.radius = MAX_R * (0.5 + Math.random() * 0.5);
-      p.speed  = 0.012 + Math.random() * 0.018;
-      p.shrink = 0.10  + Math.random() * 0.18;
+      // 重置到旋臂外圈
+      const armBase = (Math.floor(Math.random() * ARM_COUNT) / ARM_COUNT) * Math.PI * 2;
+      p.angle  = armBase + 0.2 + Math.random() * 0.6;
+      p.radius = MAX_R * (0.45 + Math.random() * 0.55);
+      p.speed  = 0.010 + Math.random() * 0.016;
+      p.shrink = 0.08  + Math.random() * 0.16;
     }
 
     const t    = 1 - p.radius / MAX_R;   // 0=外圈 1=中心
@@ -92,21 +97,31 @@ function tick() {
     const py   = CY + Math.sin(p.angle) * p.radius;
     const sz   = p.size * (1 + t * 1.8);
 
-    // 颜色：外圈蓝灰，中圈蓝，内圈深蓝
-    const light = Math.floor(55 + (1-t)*80);   // 外圈浅，内圈深
-    const blue  = Math.floor(160 + (1-t)*50);
-    const alpha = p.alpha * (0.3 + t * 0.7);
+    // 颜色：外圈蓝灰，内圈深蓝；中心附近有微暖色
+    const light = Math.floor(50 + (1-t)*90);
+    const blue  = Math.floor(140 + (1-t)*70);
+    // 极内圈加橙色光晕
+    const warmR = t > 0.85 ? Math.floor((t-0.85)/0.15 * 80) : 0;
+    const alpha = p.alpha * (0.25 + t * 0.75);
 
     ctx.beginPath();
     ctx.arc(px, py, sz, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(${light},${light+20},${blue},${alpha})`;
+    ctx.fillStyle = `rgba(${light + warmR},${light+15},${blue},${alpha})`;
     ctx.fill();
   }
 
-  // 中心光晕（极淡）
+  // 中心暖色光晕（橙红，对应截图中的R色点）
+  const warmGlow = ctx.createRadialGradient(CX, CY, 0, CX, CY, 40);
+  warmGlow.addColorStop(0,   'rgba(220,120,60,0.18)');
+  warmGlow.addColorStop(0.5, 'rgba(200,90,40,0.06)');
+  warmGlow.addColorStop(1,   'rgba(200,90,40,0)');
+  ctx.fillStyle = warmGlow;
+  ctx.beginPath(); ctx.arc(CX, CY, 40, 0, Math.PI*2); ctx.fill();
+
+  // 外层冷色光晕
   const glow = ctx.createRadialGradient(CX, CY, 0, CX, CY, 100);
-  glow.addColorStop(0,   'rgba(100,150,220,0.08)');
-  glow.addColorStop(1,   'rgba(100,150,220,0)');
+  glow.addColorStop(0,   'rgba(80,130,210,0.06)');
+  glow.addColorStop(1,   'rgba(80,130,210,0)');
   ctx.fillStyle = glow;
   ctx.beginPath(); ctx.arc(CX, CY, 100, 0, Math.PI*2); ctx.fill();
 
