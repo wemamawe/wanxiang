@@ -145,18 +145,42 @@ function drawSky() {
   ctx.fillRect(0, 0, W, H);
 }
 
-// ── Text ──
-function drawText(alpha) {
+// ── Poem lines (Pretext-powered, measured once at init) ──
+const POEM_TEXT = '桃之夭夭，灼灼其华。\n之子于归，宜其室家。\n桃之夭夭，有蕡其实。\n之子于归，宜其家室。';
+const POEM_FONT = '20px "PingFang SC","Microsoft YaHei",serif';
+const POEM_LINE_H = 34;
+const POEM_MAX_W = 180;
+let poemLines = null; // filled by preparePoem()
+
+function preparePoem() {
+  // Pretext: measure + segment once, layout is pure arithmetic after this
+  const { prepareWithSegments, layoutWithLines } = window.__Pretext__;
+  const prepared = prepareWithSegments(POEM_TEXT, POEM_FONT, { whiteSpace: 'pre-wrap' });
+  const result = layoutWithLines(prepared, POEM_MAX_W, POEM_LINE_H);
+  poemLines = result.lines; // [{text, width, ...}, ...]
+}
+
+function drawPoem(alpha) {
+  if (!poemLines) return;
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.font = 'bold 24px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.font = POEM_FONT;
   ctx.textAlign = 'right';
-  // white outline
-  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-  ctx.lineWidth = 4;
-  ctx.strokeText('等枝桠成繁华', W - 28, 220);
-  ctx.fillStyle = 'rgba(60,40,40,0.82)';
-  ctx.fillText('等枝桠成繁华', W - 28, 220);
+
+  const totalH = poemLines.length * POEM_LINE_H;
+  // anchor: right side, vertically centered in lower-right area
+  const xRight = W - 28;
+  const yTop = H - 60 - totalH;
+
+  poemLines.forEach((line, i) => {
+    const y = yTop + i * POEM_LINE_H + POEM_LINE_H * 0.8;
+    // subtle text shadow
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 3;
+    ctx.strokeText(line.text, xRight, y);
+    ctx.fillStyle = 'rgba(50,32,28,0.88)';
+    ctx.fillText(line.text, xRight, y);
+  });
   ctx.restore();
 }
 
@@ -221,14 +245,38 @@ function animate() {
     }
   }
 
-  // text fades in after branches mostly done
+  // poem fades in after branches mostly done
   if (frame > 150) {
-    const ta = Math.min(1, (frame-150)/40);
-    drawText(ta);
+    const ta = Math.min(1, (frame-150)/60);
+    drawPoem(ta);
   }
 }
 
-animate();
+// Load Pretext from CDN, then start
+(function loadPretext() {
+  // inject module shim so we can grab named exports
+  const script = document.createElement('script');
+  script.type = 'module';
+  script.textContent = `
+    import * as PT from 'https://cdn.jsdelivr.net/npm/@chenglou/pretext@latest/dist/index.js';
+    window.__Pretext__ = PT;
+    window.dispatchEvent(new Event('pretext-ready'));
+  `;
+  document.head.appendChild(script);
+})();
+
+window.addEventListener('pretext-ready', () => {
+  preparePoem();
+  animate();
+});
+
+// Fallback: if CDN fails, run without poem
+setTimeout(() => {
+  if (!poemLines) {
+    console.warn('Pretext CDN timeout, running without poem');
+    animate();
+  }
+}, 3000);
 </script>
 </body>
 </html>
