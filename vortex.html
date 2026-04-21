@@ -1,176 +1,158 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>漩涡</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      background: #06080f;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-    }
-    canvas {
-      display: block;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>漩涡 · 重制</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#f4f6f8; display:flex; align-items:center; justify-content:center; min-height:100vh; overflow:hidden; }
+  canvas { display:block; }
+</style>
 </head>
 <body>
-<canvas id="vortex" width="520" height="700"></canvas>
+<canvas id="c"></canvas>
 <script>
-(function () {
-  const canvas = document.getElementById('vortex');
-  const ctx = canvas.getContext('2d');
-  const W = 520, H = 700;
-  const CX = W / 2, CY = H / 2;
-  const MAX_R = 210;
-  const NUM_PARTICLES = 400;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 520, H = 700;
+canvas.width = W; canvas.height = H;
 
-  // ── Character cycle state ─────────────────────────────────────────────────
-  const CHARS = ['归', '散', '念', '逝', '忘', '还'];
-  let charIndex = 0;
-  let frame = 0;
-  const CHAR_PERIOD = 120; // frames per character
+const CX = W / 2, CY = H / 2 - 20;
+const MAX_R = 220;
 
-  // 0..59  = fade-in phase
-  // 60..89 = hold phase
-  // 90..119= fade-out / enlarge phase
-  function getCharState(f) {
-    const t = f % CHAR_PERIOD;
-    if (t < 50) {
-      // fade in
-      return { alpha: t / 50, scale: 1.0, active: true };
-    } else if (t < 80) {
-      // hold
-      return { alpha: 1.0, scale: 1.0, active: true };
-    } else {
-      // fade out + expand
-      const p = (t - 80) / 40; // 0→1
-      return { alpha: 1.0 - p, scale: 1.0 + p * 0.08, active: true };
-    }
-  }
+// ══════════════════════════════════════
+//  粒子（浅色背景版：深蓝色粒子）
+// ══════════════════════════════════════
+const PARTICLE_COUNT = 320;
 
-  // ── Particle factory ──────────────────────────────────────────────────────
-  function createParticle(forceOuter) {
-    const angle = Math.random() * Math.PI * 2;
-    const radius = forceOuter
-      ? MAX_R * (0.6 + Math.random() * 0.4)
-      : Math.random() * MAX_R;
-    const speed = 0.012 + Math.random() * 0.025;   // angular speed
-    const shrink = 0.18 + Math.random() * 0.22;    // radius shrink per frame
-    const size = 1.2;
-    const alpha = 0.3 + Math.random() * 0.7;
-    return { angle, radius, speed, shrink, size, alpha, x: 0, y: 0 };
-  }
+function makeParticle() {
+  const angle  = Math.random() * Math.PI * 2;
+  const radius = 40 + Math.random() * (MAX_R - 40);
+  return {
+    angle,
+    radius,
+    speed:   0.012 + Math.random() * 0.018,   // 角速度
+    shrink:  0.10  + Math.random() * 0.18,     // 每帧向中心收缩
+    size:    0.8   + Math.random() * 1.6,
+    alpha:   0.3   + Math.random() * 0.6,
+    // 颜色：外圈深蓝，内圈浅蓝
+    hue:     200   + Math.random() * 25,
+  };
+}
 
-  const particles = [];
-  for (let i = 0; i < NUM_PARTICLES; i++) {
-    particles.push(createParticle(false));
-  }
+const particles = Array.from({length: PARTICLE_COUNT}, makeParticle);
 
-  // ── Color interpolation ───────────────────────────────────────────────────
-  function particleColor(radius, alpha) {
-    const r = Math.max(0, Math.min(1, radius / MAX_R)); // 0=center, 1=outer
-    let red, green, blue;
-    if (r > 0.5) {
-      // outer: blue-purple rgba(120,100,220)
-      const t = (r - 0.5) / 0.5;
-      red   = Math.round(160 - t * 40);  // 160→120
-      green = Math.round(180 - t * 80);  // 180→100
-      blue  = 220;
-    } else {
-      // inner: blue-white rgba(220,230,255)
-      const t = r / 0.5;
-      red   = Math.round(220 - t * 60);  // 220→160
-      green = Math.round(230 - t * 50);  // 230→180
-      blue  = 255;
-    }
-    return `rgba(${red},${green},${blue},${alpha.toFixed(3)})`;
-  }
+// ══════════════════════════════════════
+//  汉字序列
+// ══════════════════════════════════════
+const CHARS = ['归', '散', '念', '逝', '忘', '还', '寻', '望'];
+let charIdx   = 0;
+let charAlpha = 0;
+let charScale = 1.0;
+let charPhase = 'in';   // 'in' | 'hold' | 'out'
+let charFrame = 0;
+const DUR_IN   = 55;
+const DUR_HOLD = 50;
+const DUR_OUT  = 45;
 
-  // ── Particle size by radius ───────────────────────────────────────────────
-  function particleSize(radius) {
-    const r = Math.max(0, Math.min(1, radius / MAX_R));
-    return 1.2 + (1 - r) * 2.5;
-  }
+// ══════════════════════════════════════
+//  主循环
+// ══════════════════════════════════════
+let frame = 0;
 
-  // ── Draw loop ─────────────────────────────────────────────────────────────
-  function draw() {
-    // 1. Trailing overlay
-    ctx.fillStyle = 'rgba(6,8,15,0.18)';
+function tick() {
+  requestAnimationFrame(tick);
+  frame++;
+
+  // 浅色背景（带极淡拖尾）
+  ctx.fillStyle = 'rgba(244,246,248,0.22)';
+  ctx.fillRect(0, 0, W, H);
+
+  // 完全重绘背景（避免拖尾覆盖文字）
+  // 先画一层完整背景
+  if (frame === 1) {
+    ctx.fillStyle = '#f4f6f8';
     ctx.fillRect(0, 0, W, H);
-
-    // 2. Central radial glow
-    const grd = ctx.createRadialGradient(CX, CY, 0, CX, CY, 180);
-    grd.addColorStop(0, 'rgba(80,60,200,0.12)');
-    grd.addColorStop(1, 'rgba(80,60,200,0)');
-    ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, W, H);
-
-    // 3. Update & draw particles
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      p.angle += p.speed;
-      p.radius -= p.shrink;
-
-      if (p.radius < 5) {
-        // reset to outer ring
-        p.angle  = Math.random() * Math.PI * 2;
-        p.radius = MAX_R * (0.65 + Math.random() * 0.35);
-        p.speed  = 0.012 + Math.random() * 0.025;
-        p.shrink = 0.18 + Math.random() * 0.22;
-        p.alpha  = 0.3 + Math.random() * 0.7;
-      }
-
-      p.x = CX + Math.cos(p.angle) * p.radius;
-      p.y = CY + Math.sin(p.angle) * p.radius;
-
-      const sz    = particleSize(p.radius);
-      const color = particleColor(p.radius, p.alpha);
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, sz, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-    }
-
-    // 4. Central character
-    const charState = getCharState(frame);
-    if (charState.active && charState.alpha > 0.01) {
-      const ci = Math.floor(frame / CHAR_PERIOD) % CHARS.length;
-      const ch = CHARS[ci];
-      const fontSize = Math.round(52 * charState.scale);
-
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.font = `${fontSize}px 宋体, SimSun, serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const a = (charState.alpha * 0.85).toFixed(3);
-      ctx.fillStyle = `rgba(200,210,255,${a})`;
-      ctx.fillText(ch, CX, CY);
-      ctx.restore();
-    }
-
-    // 5. Watermark — bottom-right
-    ctx.save();
-    ctx.font = '13px 宋体, SimSun, serif';
-    ctx.fillStyle = 'rgba(120,130,180,0.38)';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('漩涡', W - 14, H - 12);
-    ctx.restore();
-
-    frame++;
-    requestAnimationFrame(draw);
   }
 
-  draw();
-})();
+  // 粒子
+  for (const p of particles) {
+    p.angle  += p.speed;
+    p.radius -= p.shrink;
+    if (p.radius < 6) {
+      p.angle  = Math.random() * Math.PI * 2;
+      p.radius = MAX_R * (0.5 + Math.random() * 0.5);
+      p.speed  = 0.012 + Math.random() * 0.018;
+      p.shrink = 0.10  + Math.random() * 0.18;
+    }
+
+    const t    = 1 - p.radius / MAX_R;   // 0=外圈 1=中心
+    const px   = CX + Math.cos(p.angle) * p.radius;
+    const py   = CY + Math.sin(p.angle) * p.radius;
+    const sz   = p.size * (1 + t * 1.8);
+
+    // 颜色：外圈蓝灰，中圈蓝，内圈深蓝
+    const light = Math.floor(55 + (1-t)*80);   // 外圈浅，内圈深
+    const blue  = Math.floor(160 + (1-t)*50);
+    const alpha = p.alpha * (0.3 + t * 0.7);
+
+    ctx.beginPath();
+    ctx.arc(px, py, sz, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${light},${light+20},${blue},${alpha})`;
+    ctx.fill();
+  }
+
+  // 中心光晕（极淡）
+  const glow = ctx.createRadialGradient(CX, CY, 0, CX, CY, 100);
+  glow.addColorStop(0,   'rgba(100,150,220,0.08)');
+  glow.addColorStop(1,   'rgba(100,150,220,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(CX, CY, 100, 0, Math.PI*2); ctx.fill();
+
+  // 汉字状态机
+  charFrame++;
+  if (charPhase === 'in') {
+    charAlpha = Math.min(0.82, charFrame / DUR_IN * 0.82);
+    charScale = 1.0;
+    if (charFrame >= DUR_IN) { charPhase = 'hold'; charFrame = 0; }
+  } else if (charPhase === 'hold') {
+    charAlpha = 0.82;
+    if (charFrame >= DUR_HOLD) { charPhase = 'out'; charFrame = 0; }
+  } else {
+    charAlpha = Math.max(0, 0.82 - charFrame / DUR_OUT * 0.82);
+    charScale = 1.0 + charFrame / DUR_OUT * 0.12;
+    if (charFrame >= DUR_OUT) {
+      charPhase = 'in'; charFrame = 0;
+      charIdx = (charIdx + 1) % CHARS.length;
+      charScale = 1.0;
+    }
+  }
+
+  // 绘制汉字
+  ctx.save();
+  ctx.globalAlpha = charAlpha;
+  ctx.translate(CX, CY);
+  ctx.scale(charScale, charScale);
+  ctx.font = `${Math.floor(58 / charScale)}px "Songti SC","STSong","SimSun",serif`;
+  ctx.fillStyle = 'rgba(35,65,120,1)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(CHARS[charIdx], 0, 0);
+  ctx.restore();
+
+  // 署名
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.font = '11px "Songti SC",serif';
+  ctx.fillStyle = 'rgba(60,100,160,1)';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('漩  涡', W - 22, H - 20);
+  ctx.restore();
+}
+
+tick();
 </script>
 </body>
 </html>
-// DONE

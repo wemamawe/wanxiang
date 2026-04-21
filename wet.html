@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>湿帘</title>
+<title>湿帘 · 重制</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#0a0a0f; display:flex; align-items:center; justify-content:center; min-height:100vh; overflow:hidden; }
+  body { background:#f4f6f8; display:flex; align-items:center; justify-content:center; min-height:100vh; overflow:hidden; }
   canvas { display:block; }
 </style>
 </head>
@@ -19,246 +19,190 @@ const W = 520, H = 700;
 canvas.width = W; canvas.height = H;
 
 // ══════════════════════════════════════
-//  背景城市灯光层（离屏）
-// ══════════════════════════════════════
-const bgCanvas = document.createElement('canvas');
-bgCanvas.width = W; bgCanvas.height = H;
-const bgCtx = bgCanvas.getContext('2d');
-
-function drawCityBg() {
-  // 夜空渐变
-  const sky = bgCtx.createLinearGradient(0, 0, 0, H);
-  sky.addColorStop(0, '#050810');
-  sky.addColorStop(0.5, '#0a1020');
-  sky.addColorStop(1, '#121830');
-  bgCtx.fillStyle = sky; bgCtx.fillRect(0, 0, W, H);
-
-  // 城市轮廓
-  bgCtx.fillStyle = '#0d1525';
-  const buildings = [
-    [0,420,60,280],[55,380,50,320],[100,400,40,300],[135,350,70,350],
-    [200,370,55,330],[250,420,45,280],[290,360,80,340],[365,390,50,310],
-    [410,340,65,360],[470,410,50,290],
-  ];
-  buildings.forEach(([x,y,w,h]) => bgCtx.fillRect(x, y, w, h));
-
-  // 建筑窗户灯光
-  const winColors = ['rgba(255,230,150,0.7)','rgba(180,210,255,0.6)','rgba(255,200,180,0.5)'];
-  for (let i = 0; i < 120; i++) {
-    const bx = Math.random() * W;
-    const by = 350 + Math.random() * 300;
-    const ws = 3 + Math.random() * 5;
-    bgCtx.fillStyle = winColors[Math.floor(Math.random() * winColors.length)];
-    bgCtx.fillRect(bx, by, ws, ws * 1.4);
-  }
-
-  // 霓虹反光（地面）
-  const neons = [
-    { x: 80,  color: 'rgba(255,60,80,0.15)'  },
-    { x: 200, color: 'rgba(60,120,255,0.12)' },
-    { x: 360, color: 'rgba(255,160,30,0.10)' },
-    { x: 450, color: 'rgba(80,220,180,0.08)' },
-  ];
-  neons.forEach(n => {
-    const g = bgCtx.createRadialGradient(n.x, H-80, 0, n.x, H-80, 100);
-    g.addColorStop(0, n.color); g.addColorStop(1, 'transparent');
-    bgCtx.fillStyle = g; bgCtx.fillRect(0, H-180, W, 180);
-  });
-}
-drawCityBg();
-
-// ══════════════════════════════════════
-//  水珠系统
+//  水珠类
 // ══════════════════════════════════════
 class Drop {
-  constructor() { this.reset(true); }
-
-  reset(init = false) {
-    this.x = Math.random() * W;
-    this.y = init ? Math.random() * H : -10;
-    this.r = 2 + Math.random() * 4;       // 半径
-    this.vx = (Math.random() - 0.5) * 0.3;
+  constructor(x, y) {
+    this.x = x ?? (30 + Math.random() * (W - 60));
+    this.y = y ?? (20 + Math.random() * H * 0.6);
+    this.r  = 4 + Math.random() * 14;
     this.vy = 0;
-    this.gravity = 0.012 + Math.random() * 0.018;
-    this.friction = 0.985;
-    this.sliding = false;
-    this.slideSpeed = 0;
-    this.trail = [];                        // 滑落轨迹
-    this.alpha = 0.7 + Math.random() * 0.3;
-    this.mergeTimer = 0;
+    this.vx = (Math.random() - 0.5) * 0.15;
+    this.gravity = 0.008 + Math.random() * 0.012;
+    this.friction = 0.988;
+    this.sliding  = false;
+    this.slideDelay = Math.floor(80 + Math.random() * 200);  // 静止多少帧后开始滑
+    this.age  = Math.floor(Math.random() * 120);
     this.alive = true;
-    this.age = 0;
-    // 雨滴撞击扩散环
-    this.splashR = 0;
-    this.splashAlpha = 0;
-    this.splashing = false;
+    this.trail = [];
+    // 合并吸引半径
+    this.mergeR = this.r * 1.4;
   }
 
   update(drops) {
     this.age++;
 
-    // 撞击扩散动画
-    if (this.splashing) {
-      this.splashR += 1.8;
-      this.splashAlpha -= 0.04;
-      if (this.splashAlpha <= 0) this.splashing = false;
+    if (!this.sliding && this.age > this.slideDelay) {
+      // 尝试合并附近小珠
+      for (let i = drops.length - 1; i >= 0; i--) {
+        const d = drops[i];
+        if (d === this || !d.alive || d.sliding) continue;
+        if (d.r >= this.r) continue;
+        const dist = Math.hypot(d.x - this.x, d.y - this.y);
+        if (dist < this.r + d.r * 0.8) {
+          // 吸收
+          const newR = Math.sqrt(this.r*this.r + d.r*d.r*0.6);
+          this.r = Math.min(newR, 22);
+          this.mergeR = this.r * 1.4;
+          d.alive = false;
+        }
+      }
+      // 达到临界才滑落
+      if (this.r > 11) this.sliding = true;
     }
 
     if (this.sliding) {
-      // 滑落模式
-      this.trail.push({ x: this.x, y: this.y });
-      if (this.trail.length > 22) this.trail.shift();
-      this.slideSpeed += this.gravity * 1.4;
-      this.slideSpeed *= this.friction;
-      this.y += this.slideSpeed;
-      this.x += this.vx * 0.5;
-      // 出屏重置
-      if (this.y > H + 20) { this.reset(); }
+      this.trail.push({ x: this.x, y: this.y, r: this.r * 0.35 });
+      if (this.trail.length > 30) this.trail.shift();
+      this.vy += this.gravity;
+      this.vy *= this.friction;
+      this.y  += this.vy;
+      this.x  += this.vx;
+      // 滑落中珠子变小（水留在轨迹上）
+      this.r = Math.max(4, this.r - 0.012);
+      if (this.y > H + 40 || this.r < 4) this.alive = false;
     } else {
-      // 静止水珠：轻微震动，等待合并或积累到临界
-      this.r += 0.004;   // 雨水积累，半径慢慢变大
-      if (this.r > 9) {  // 超过临界，开始滑落
-        this.sliding = true;
-        this.slideSpeed = 0.5;
-      }
-      // 检测附近水珠合并
-      if (this.age % 8 === 0) {
-        for (let d of drops) {
-          if (d === this || !d.alive || d.sliding) continue;
-          const dist = Math.hypot(d.x - this.x, d.y - this.y);
-          if (dist < this.r + d.r + 1) {
-            // 合并：吸收小水珠
-            if (d.r < this.r) {
-              this.r = Math.sqrt(this.r*this.r + d.r*d.r * 0.7);
-              this.r = Math.min(this.r, 10);
-              d.alive = false;
-            }
-          }
-        }
-      }
+      // 静止时轻微呼吸
+      this.r += 0.006;
     }
   }
 
   draw() {
     if (!this.alive) return;
 
-    // 滑落轨迹（水痕）
+    // 水痕轨迹
     if (this.trail.length > 2) {
-      ctx.beginPath();
-      ctx.moveTo(this.trail[0].x, this.trail[0].y);
+      ctx.save();
       for (let i = 1; i < this.trail.length; i++) {
-        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+        const t = i / this.trail.length;
+        const p = this.trail[i];
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * (0.3 + t * 0.7), 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(100,170,220,${t * 0.18})`;
+        ctx.fill();
       }
-      ctx.strokeStyle = `rgba(180,210,255,0.12)`;
-      ctx.lineWidth = this.r * 0.6;
-      ctx.lineCap = 'round';
-      ctx.stroke();
+      ctx.restore();
     }
 
-    // 撞击扩散环
-    if (this.splashing) {
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.splashR, 0, Math.PI*2);
-      ctx.strokeStyle = `rgba(180,210,255,${this.splashAlpha})`;
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-    }
+    const r = this.r;
 
-    // 水珠本体（带折射感）
-    const grd = ctx.createRadialGradient(
-      this.x - this.r*0.3, this.y - this.r*0.3, this.r*0.05,
-      this.x, this.y, this.r
-    );
-    grd.addColorStop(0,   `rgba(220,235,255,${this.alpha * 0.95})`);
-    grd.addColorStop(0.4, `rgba(160,195,240,${this.alpha * 0.55})`);
-    grd.addColorStop(0.8, `rgba(100,150,220,${this.alpha * 0.30})`);
-    grd.addColorStop(1,   `rgba(60,100,180,${this.alpha * 0.10})`);
+    // 水珠底部阴影（贴在玻璃上的感觉）
+    ctx.save();
+    ctx.filter = 'blur(3px)';
+    ctx.beginPath();
+    ctx.ellipse(this.x + 1, this.y + r * 0.5, r * 0.8, r * 0.25, 0, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(80,140,200,0.12)';
+    ctx.fill();
+    ctx.filter = 'none';
+    ctx.restore();
+
+    // 水珠本体 — 用径向渐变模拟玻璃球折射
+    const gx = this.x - r * 0.25;
+    const gy = this.y - r * 0.30;
+    const grd = ctx.createRadialGradient(gx, gy, r * 0.04, this.x, this.y, r);
+    grd.addColorStop(0,    'rgba(255,255,255,0.90)');
+    grd.addColorStop(0.18, 'rgba(210,235,255,0.70)');
+    grd.addColorStop(0.55, 'rgba(100,170,220,0.45)');
+    grd.addColorStop(0.85, 'rgba(60,130,190,0.35)');
+    grd.addColorStop(1,    'rgba(40,100,160,0.20)');
 
     ctx.beginPath();
-    ctx.arc(this.x, this.y, this.r, 0, Math.PI*2);
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
     ctx.fillStyle = grd;
     ctx.fill();
 
-    // 高光
+    // 边缘描边（极淡）
     ctx.beginPath();
-    ctx.arc(this.x - this.r*0.28, this.y - this.r*0.28, this.r*0.22, 0, Math.PI*2);
-    ctx.fillStyle = `rgba(255,255,255,${this.alpha * 0.6})`;
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(80,150,210,0.22)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+
+    // 主高光
+    ctx.beginPath();
+    ctx.ellipse(this.x - r*0.22, this.y - r*0.26, r*0.28, r*0.18, -0.4, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.88)';
+    ctx.fill();
+
+    // 副高光（右下小反光）
+    ctx.beginPath();
+    ctx.ellipse(this.x + r*0.30, this.y + r*0.28, r*0.10, r*0.06, 0.5, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
     ctx.fill();
   }
 }
 
 // ══════════════════════════════════════
-//  雨线（快速下落的细雨）
+//  雨丝（极细、极淡）
 // ══════════════════════════════════════
-const rainLines = Array.from({length: 80}, () => ({
-  x: Math.random() * W,
-  y: Math.random() * H,
-  len: 8 + Math.random() * 14,
-  speed: 8 + Math.random() * 6,
-  alpha: 0.08 + Math.random() * 0.14,
+const rainLines = Array.from({length: 55}, () => ({
+  x:  Math.random() * W,
+  y:  Math.random() * H,
+  len: 12 + Math.random() * 20,
+  spd: 9 + Math.random() * 5,
+  alpha: 0.04 + Math.random() * 0.07,
 }));
 
-function updateRain() {
-  for (const r of rainLines) {
-    r.y += r.speed;
-    if (r.y > H + 20) { r.y = -20; r.x = Math.random() * W; }
-  }
-}
-
-function drawRain() {
-  ctx.save();
-  for (const r of rainLines) {
-    ctx.beginPath();
-    ctx.moveTo(r.x, r.y);
-    ctx.lineTo(r.x - 1, r.y + r.len);
-    ctx.strokeStyle = `rgba(180,210,255,${r.alpha})`;
-    ctx.lineWidth = 0.7;
-    ctx.stroke();
-  }
-  ctx.restore();
+// ══════════════════════════════════════
+//  涟漪（雨滴撞击扩散）
+// ══════════════════════════════════════
+const ripples = [];
+function addRipple(x, y) {
+  ripples.push({ x, y, r: 2, alpha: 0.5, spd: 1.6 });
 }
 
 // ══════════════════════════════════════
-//  玻璃模糊效果（用离屏canvas模拟）
+//  诗句（在水珠间轻轻浮现）
 // ══════════════════════════════════════
-// 水珠下方区域：将背景稍微采样扭曲，模拟折射
-function drawDropRefraction(drop) {
-  if (!drop.alive || drop.r < 2) return;
-  const r = drop.r;
-  // 从背景截取并翻转（折射感）
-  try {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(drop.x, drop.y, r, 0, Math.PI*2);
-    ctx.clip();
-    // 翻转背景（模拟凸透镜折射）
-    ctx.translate(drop.x, drop.y);
-    ctx.scale(-1.1, -1.1);
-    ctx.translate(-drop.x, -drop.y);
-    ctx.globalAlpha = 0.7;
-    ctx.drawImage(bgCanvas, 0, 0);
-    ctx.restore();
-  } catch(e) {}
-}
+const POEM = '帘外雨潺潺，春意阑珊';
+let poemAlpha = 0;
+let poemDir = 1;
 
 // ══════════════════════════════════════
-//  水珠池管理
+//  初始化水珠
 // ══════════════════════════════════════
-let drops = Array.from({length: 60}, () => new Drop());
+let drops = Array.from({length: 28}, () => new Drop());
 let frame = 0;
-const RAIN_INTERVAL = 4; // 每4帧新增一个雨滴落下
+
+function spawnDrop() {
+  const x = 30 + Math.random() * (W - 60);
+  const y = 30 + Math.random() * H * 0.5;
+  drops.push(new Drop(x, y));
+  addRipple(x, y);
+}
 
 // ══════════════════════════════════════
-//  标题文字
+//  绘制玻璃背景（极淡纹理）
 // ══════════════════════════════════════
-function drawLabel() {
-  ctx.save();
-  ctx.font = '13px "Songti SC","SimSun",serif';
-  ctx.fillStyle = 'rgba(180,210,255,0.35)';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'bottom';
-  ctx.fillText('湿  帘', W - 20, H - 20);
-  ctx.restore();
+function drawBackground() {
+  // 主背景
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0,   '#f0f4f8');
+  bg.addColorStop(0.4, '#eef2f6');
+  bg.addColorStop(1,   '#e8ecf0');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // 极淡的竖向光条（玻璃折射感）
+  for (let i = 0; i < 5; i++) {
+    const lx = (i / 4) * W * 0.8 + W * 0.1;
+    const lg = ctx.createLinearGradient(lx - 30, 0, lx + 30, 0);
+    lg.addColorStop(0,   'rgba(255,255,255,0)');
+    lg.addColorStop(0.5, 'rgba(255,255,255,0.06)');
+    lg.addColorStop(1,   'rgba(255,255,255,0)');
+    ctx.fillStyle = lg;
+    ctx.fillRect(lx - 30, 0, 60, H);
+  }
 }
 
 // ══════════════════════════════════════
@@ -268,44 +212,77 @@ function tick() {
   requestAnimationFrame(tick);
   frame++;
 
-  // 玻璃背景（轻微模糊感 - 用半透明叠加实现）
-  ctx.globalAlpha = 1;
-  ctx.drawImage(bgCanvas, 0, 0);
+  drawBackground();
 
-  // 玻璃遮罩（轻微磨砂质感）
-  ctx.fillStyle = 'rgba(10,15,30,0.35)';
-  ctx.fillRect(0, 0, W, H);
+  // 雨丝
+  ctx.save();
+  for (const r of rainLines) {
+    r.y += r.spd;
+    if (r.y > H + 25) { r.y = -25; r.x = Math.random() * W; }
+    ctx.beginPath();
+    ctx.moveTo(r.x, r.y);
+    ctx.lineTo(r.x - 0.6, r.y + r.len);
+    ctx.strokeStyle = `rgba(100,160,210,${r.alpha})`;
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+  }
+  ctx.restore();
 
-  // 雨线
-  drawRain();
-  updateRain();
+  // 涟漪
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const rp = ripples[i];
+    rp.r += rp.spd;
+    rp.alpha -= 0.018;
+    if (rp.alpha <= 0) { ripples.splice(i, 1); continue; }
+    ctx.beginPath();
+    ctx.ellipse(rp.x, rp.y, rp.r, rp.r * 0.35, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(90,155,210,${rp.alpha})`;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
 
-  // 新雨滴落下：触发撞击
-  if (frame % RAIN_INTERVAL === 0 && drops.length < 120) {
-    const nd = new Drop();
-    nd.y = Math.random() * H * 0.7;
-    nd.sliding = false;
-    nd.splashing = true;
-    nd.splashR = nd.r;
-    nd.splashAlpha = 0.6;
-    drops.push(nd);
+  // 新雨滴（每50帧）
+  if (frame % 50 === 0 && drops.length < 42) {
+    spawnDrop();
   }
 
   // 清理死亡水珠
-  if (frame % 60 === 0) {
+  if (frame % 120 === 0) {
     drops = drops.filter(d => d.alive);
-    // 补充到最低数量
-    while (drops.length < 55) drops.push(new Drop());
+    while (drops.length < 22) spawnDrop();
   }
 
-  // 水珠折射 + 绘制
+  // 更新&绘制水珠（小珠先画，大珠后画）
+  drops.sort((a, b) => a.r - b.r);
   for (const d of drops) {
     d.update(drops);
-    drawDropRefraction(d);
     d.draw();
   }
 
-  drawLabel();
+  // 诗句淡入淡出
+  poemAlpha += poemDir * 0.003;
+  if (poemAlpha >= 0.55) poemDir = -1;
+  if (poemAlpha <= 0.0)  poemDir =  1;
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0, poemAlpha);
+  ctx.font = '14px "Songti SC","STSong","SimSun",serif';
+  ctx.fillStyle = 'rgba(70,110,150,1)';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.letterSpacing = '4px';
+  ctx.fillText(POEM, W / 2, H - 52);
+  ctx.restore();
+
+  // 署名
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.font = '11px "Songti SC",serif';
+  ctx.fillStyle = 'rgba(80,120,160,1)';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('湿  帘', W - 22, H - 20);
+  ctx.restore();
 }
 
 tick();
