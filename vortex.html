@@ -2,11 +2,11 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>漩涡 · 重制</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#f4f6f8; display:flex; align-items:center; justify-content:center; min-height:100vh; overflow:hidden; }
+  body { background:#f4f6f8; display:flex; align-items:center; justify-content:center; min-height:100vh; overflow:hidden; touch-action:none; }
   canvas { display:block; }
 </style>
 </head>
@@ -15,11 +15,18 @@
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const W = 520, H = 700;
+let W = window.innerWidth, H = window.innerHeight;
 canvas.width = W; canvas.height = H;
 
-const CX = W / 2, CY = H * 0.42;  // 中心偏上，下方留白
-const MAX_R = 200;
+let CX = W / 2, CY = H * 0.42;
+const MAX_R = Math.min(W,H) * 0.35;
+
+function handleResize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+  CX = W / 2; CY = H * 0.42;
+}
+window.addEventListener('resize',handleResize);
 
 // ══════════════════════════════════════
 //  粒子（浅色背景版：深蓝色粒子，有旋臂结构）
@@ -168,6 +175,37 @@ function tick() {
 }
 
 tick();
+</script>
+
+<script>
+// Generated Audio System - 深空嗡鸣
+// 深空嗡鸣音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  const freqs=[55,82.41,110];
+  freqs.forEach((f,i)=>{
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=f;o.type='sine';g.gain.value=0.12/(i+1);
+    o.connect(g);g.connect(master);o.start();
+    // 微弱泛音
+    const h=ctx.createOscillator(),hg=ctx.createGain();
+    h.frequency.value=f*2;h.type='sine';hg.gain.value=0.03/(i+1);
+    h.connect(hg);hg.connect(master);h.start();
+  });
+  isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

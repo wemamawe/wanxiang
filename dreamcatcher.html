@@ -17,21 +17,25 @@
             align-items: center;
             min-height: 100vh;
             overflow: hidden;
+            touch-action: none;
             font-family: 'STKaiti', 'KaiTi', serif;
         }
         canvas {
-            border-radius: 8px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            display: block;
+            width: 100%;
+            height: 100%;
         }
     </style>
 </head>
 <body>
-    <canvas id="canvas" width="520" height="700"></canvas>
+    <canvas id="canvas"></canvas>
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
+        let width = window.innerWidth;
+        let height = window.innerHeight;
+        canvas.width = width;
+        canvas.height = height;
 
         // 星星背景
         const stars = [];
@@ -71,6 +75,26 @@
         });
 
         canvas.addEventListener('mouseleave', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+        });
+        canvas.addEventListener('touchend', () => {
             mouseX = -1000;
             mouseY = -1000;
         });
@@ -377,7 +401,74 @@
             requestAnimationFrame(animate);
         }
 
+        // Resize 监听
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            // 重新生成星星
+            stars.length = 0;
+            for (let i = 0; i < 100; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height,
+                    radius: Math.random() * 1.5,
+                    opacity: Math.random() * 0.5 + 0.2,
+                    twinkleSpeed: Math.random() * 0.02 + 0.01
+                });
+            }
+            // 重置捕梦网位置
+            dreamcatcher.x = width / 2;
+            dreamcatcher.y = 180;
+        });
+
         animate();
     </script>
+
+<script>
+// Generated Audio System - 夜虫+风铃
+// 夜虫+风铃音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 夜虫颤音
+  function cricket(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    const vib=ctx.createOscillator(),vg=ctx.createGain();
+    o.frequency.value=3000+Math.random()*800;o.type='sine';
+    vib.frequency.value=20;vg.gain.value=50;
+    vib.connect(vg);vg.connect(o.frequency);
+    g.gain.setValueAtTime(0.08,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.5);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+0.6);vib.start();vib.stop(ctx.currentTime+0.6);
+    setTimeout(cricket,1000+Math.random()*2500);
+  }
+  
+  // 风铃
+  function chime(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=1400+Math.random()*600;o.type='sine';
+    g.gain.setValueAtTime(0.06,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+1.8);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+2);
+    setTimeout(chime,2000+Math.random()*4000);
+  }
+  cricket();chime();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
+</script>
 </body>
 </html>

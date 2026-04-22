@@ -10,8 +10,9 @@
     background: #0c0805;
     display: flex; align-items: center; justify-content: center;
     min-height: 100vh; overflow: hidden;
+    touch-action: none;
   }
-  canvas { display: block; }
+  canvas { display: block; width: 100%; height: 100%; }
 </style>
 </head>
 <body>
@@ -19,7 +20,7 @@
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
-const W = 520, H = 700;
+let W = window.innerWidth, H = window.innerHeight;
 canvas.width = W; canvas.height = H;
 
 // ══════════════════════════════════════
@@ -37,16 +38,23 @@ const POEM_LINES = [
 ];
 
 // ══════════════════════════════════════
-//  信纸参数
+//  信纸参数（响应式）
 // ══════════════════════════════════════
-const PX = 148, PY = 105;
-const PW = 224, PH = 340;
-const ML = 28, MT = 26, LINE_H = 30;
-const FONT = '14px "Songti SC","SimSun","STSong",serif';
+let PX, PY, PW, PH, ML, MT, LINE_H, FONT;
+function updateLayout() {
+  const scale = Math.min(W, H) / 700;
+  PX = W * 0.28; PY = H * 0.15;
+  PW = Math.min(W * 0.43, 224); PH = Math.min(H * 0.49, 340);
+  ML = 28 * scale; MT = 26 * scale; LINE_H = 30 * scale;
+  FONT = `${Math.floor(14 * scale)}px "Songti SC","SimSun","STSong",serif`;
+}
+updateLayout();
 
 // 预计算字符坐标
-ctx.font = FONT;
-const charMap = [];
+let charMap = [];
+function buildCharMap() {
+  charMap = [];
+  ctx.font = FONT;
 POEM_LINES.forEach((line, row) => {
   let cx = PX + ML;
   const baseY = PY + MT + (row + 0.82) * LINE_H;
@@ -56,16 +64,23 @@ POEM_LINES.forEach((line, row) => {
     charMap.push({ ch, x: cx, y: baseY, row, col, cw });
     cx += cw;
   }
-});
+  });
+}
+buildCharMap();
 const TOTAL = charMap.length;
 
 // ══════════════════════════════════════
-//  蜡烛参数
+//  蜡烛参数（响应式）
 // ══════════════════════════════════════
-const CX = W / 2;       // 烛芯 x
-const CY = H - 80;      // 烛体顶部 y
-const CANDLE_W = 22;
-const CANDLE_H = 90;
+let CX, CY, CANDLE_W, CANDLE_H;
+function updateCandle() {
+  CX = W / 2;
+  CY = H - H * 0.114;
+  const scale = Math.min(W, H) / 700;
+  CANDLE_W = 22 * scale;
+  CANDLE_H = 90 * scale;
+}
+updateCandle();
 
 // 烛泪状态
 const tears = [];
@@ -311,7 +326,74 @@ function tick() {
   }
 }
 
+// ══════════════════════════════════════
+//  窗口 resize
+// ══════════════════════════════════════
+window.addEventListener('resize', () => {
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+  updateLayout();
+  buildCharMap();
+  updateCandle();
+  // 重置烛泪
+  tears.length = 0;
+  for (let i = 0; i < 4; i++) {
+    tears.push({
+      x: CX + (Math.random() - 0.5) * CANDLE_W * 0.6,
+      y: CY + Math.random() * 20,
+      vy: 0.15 + Math.random() * 0.1,
+      r:  2 + Math.random() * 1.5,
+      maxY: CY + 40 + Math.random() * 20,
+      alpha: 0.7 + Math.random() * 0.25,
+    });
+  }
+});
+
+// 触摸支持（防止页面滑动）
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchend', (e) => { e.preventDefault(); }, { passive: false });
+
 tick();
+</script>
+
+<script>
+// Generated Audio System - 篝火噼啪
+// 篝火噼啪音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 温暖低通背景
+  const bufSz=ctx.sampleRate*2,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<bufSz;i++)d[i]=Math.random()*2-1;
+  const fire=ctx.createBufferSource();fire.buffer=buf;fire.loop=true;
+  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=250;
+  const fg=ctx.createGain();fg.gain.value=0.10;
+  fire.connect(lp);lp.connect(fg);fg.connect(master);fire.start();
+  
+  // 噼啪声
+  function crackle(){
+    if(!isActive)return;
+    const bSz=ctx.sampleRate*0.03,b=ctx.createBuffer(1,bSz,ctx.sampleRate),bd=b.getChannelData(0);
+    for(let i=0;i<bSz;i++)bd[i]=(Math.random()*2-1)*Math.exp(-i/bSz*12);
+    const src=ctx.createBufferSource();src.buffer=b;
+    const g=ctx.createGain();g.gain.value=0.22;
+    src.connect(g);g.connect(master);src.start();
+    setTimeout(crackle,150+Math.random()*450);
+  }
+  crackle();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

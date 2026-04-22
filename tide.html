@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>潮汐 · 前赤壁赋</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -10,6 +10,7 @@
     background: #0a0e1a;
     display: flex; align-items: center; justify-content: center;
     min-height: 100vh; overflow: hidden;
+    touch-action:none;
   }
   canvas { display: block; }
 </style>
@@ -19,8 +20,14 @@
 <script>
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
-const W = 520, H = 680;
+let W = window.innerWidth, H = window.innerHeight;
 canvas.width = W; canvas.height = H;
+
+function handleResize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+}
+window.addEventListener('resize',handleResize);
 
 // ── 诗句（分行） ──
 const POEM_LINES = [
@@ -240,6 +247,39 @@ function tick() {
 }
 
 tick();
+</script>
+
+<script>
+// Generated Audio System - 海浪
+// 海浪音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 棕噪声海浪
+  const bufSz=ctx.sampleRate*4,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+  let last=0;for(let i=0;i<bufSz;i++){last=(last+((Math.random()*2-1)*0.1))*0.99;d[i]=last*2.5;}
+  const wave=ctx.createBufferSource();wave.buffer=buf;wave.loop=true;
+  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=400;
+  const wg=ctx.createGain();wg.gain.value=0.25;
+  wave.connect(lp);lp.connect(wg);wg.connect(master);wave.start();
+  
+  // 低频调幅呼吸感
+  const lfo=ctx.createOscillator();lfo.frequency.value=0.1;
+  const lfog=ctx.createGain();lfog.gain.value=0.15;
+  lfo.connect(lfog);lfog.connect(wg.gain);lfo.start();
+  isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

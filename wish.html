@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>愿与愁 · Wish and Sorrow</title>
     <style>
         * {
@@ -20,6 +20,7 @@
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             font-family: 'KaiTi', 'STKaiti', serif;
             overflow: hidden;
+            touch-action:none;
         }
         
         canvas {
@@ -30,13 +31,19 @@
     </style>
 </head>
 <body>
-    <canvas id="canvas" width="520" height="700"></canvas>
+    <canvas id="canvas"></canvas>
     
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+        
+        function handleResize(){
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize',handleResize);
         
         // 鼠标位置
         let mouseX = width / 2;
@@ -102,6 +109,15 @@
             mouseX = e.clientX - rect.left;
             mouseY = e.clientY - rect.top;
         });
+        // 触摸支持
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            if(e.touches[0]){
+                mouseX = e.touches[0].clientX - rect.left;
+                mouseY = e.touches[0].clientY - rect.top;
+            }
+        },{passive:false});
         
         // 更新分界线
         function updateDivider() {
@@ -303,5 +319,37 @@
         // 启动动画
         animate();
     </script>
+
+<script>
+// Generated Audio System - 双声道对比音
+// 双声道对比音音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 左声道暖和弦
+  const panL=ctx.createStereoPanner();panL.pan.value=-0.8;
+  const oL=ctx.createOscillator(),gL=ctx.createGain();
+  oL.frequency.value=220;oL.type='sine';gL.gain.value=0.10;
+  oL.connect(gL);gL.connect(panL);panL.connect(master);oL.start();
+  
+  // 右声道冷泛音
+  const panR=ctx.createStereoPanner();panR.pan.value=0.8;
+  const oR=ctx.createOscillator(),gR=ctx.createGain();
+  oR.frequency.value=880;oR.type='triangle';gR.gain.value=0.06;
+  oR.connect(gR);gR.connect(panR);panR.connect(master);oR.start();
+  isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
+</script>
 </body>
 </html>

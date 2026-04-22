@@ -14,7 +14,7 @@
             min-height: 100vh;
             background: #0a0a15;
             font-family: 'STKaiti', 'KaiTi', serif;
-            overflow: hidden;
+            overflow: hidden; touch-action: none;
         }
         canvas {
             display: block;
@@ -29,8 +29,8 @@
         const ctx = canvas.getContext('2d');
         
         // 画布尺寸
-        canvas.width = 520;
-        canvas.height = 700;
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
         
         // 鼠标位置
         let mouseX = -1000;
@@ -43,6 +43,26 @@
         });
         
         canvas.addEventListener('mouseleave', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+        
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+        });
+        canvas.addEventListener('touchend', () => {
             mouseX = -1000;
             mouseY = -1000;
         });
@@ -317,7 +337,44 @@
             requestAnimationFrame(animate);
         }
         
+        // Resize 监听
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            initText();
+        });
         animate();
     </script>
+
+<script>
+// Generated Audio System - 梦境pad
+// 梦境pad音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  const freqs=[174.61,220,261.63,329.63];
+  freqs.forEach((f,i)=>{
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    const lfo=ctx.createOscillator(),lfog=ctx.createGain();
+    o.frequency.value=f;o.type='sine';
+    lfo.frequency.value=0.25+i*0.15;lfog.gain.value=3;
+    lfo.connect(lfog);lfog.connect(o.frequency);
+    g.gain.value=0.06/(i+1);
+    o.connect(g);g.connect(master);o.start();lfo.start();
+  });
+  isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
+</script>
 </body>
 </html>

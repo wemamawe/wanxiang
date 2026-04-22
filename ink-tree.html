@@ -11,7 +11,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
+    min-height: 100vh; touch-action: none;
   }
   canvas {
     display: block;
@@ -20,12 +20,12 @@
 </style>
 </head>
 <body>
-<canvas id="c" width="520" height="680"></canvas>
+<canvas id="c"></canvas>
 <script>
 (function() {
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
-  const W = 520, H = 680;
+  let W = window.innerWidth, H = window.innerHeight; canvas.width = W; canvas.height = H;
 
   // ─── 宣纸噪点背景 ───────────────────────────────────────────
   function drawPaperTexture() {
@@ -404,9 +404,53 @@
     requestAnimationFrame(frame);
   }
 
+  window.addEventListener('resize', () => {
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W;
+    canvas.height = H;
+    buildPaper();
+    // 重新生成树（可选，或保持原树结构）
+  });
+
+// 触摸支持（防止页面滑动）
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchend', (e) => { e.preventDefault(); }, { passive: false });
   frame();
 
 })();
+</script>
+
+<script>
+// Generated Audio System - 水墨滴墨声
+// 水墨滴墨声音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  function drop(){
+    if(!isActive)return;
+    const bufSz=ctx.sampleRate*0.05,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+    for(let i=0;i<bufSz;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/bufSz*8);
+    const src=ctx.createBufferSource();src.buffer=buf;
+    const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=800;
+    const g=ctx.createGain();g.gain.value=0.18;
+    src.connect(lp);lp.connect(g);g.connect(master);src.start();
+    setTimeout(drop,1200+Math.random()*2800);
+  }
+  drop();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

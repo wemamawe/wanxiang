@@ -1,440 +1,513 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>花树展览馆</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-html,body{width:100%;min-height:100%;overflow-x:hidden;}
-body{
-  background:#0a0318;
-  font-family:'PingFang SC','Microsoft YaHei',sans-serif;
-  color:#fff;
-}
-canvas#bg{position:fixed;top:0;left:0;z-index:0;}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>花 · 树 · 展览馆 | BLOSSOM GALLERY</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-.header{
-  position:fixed;top:0;left:0;right:0;z-index:10;
-  padding:32px 0 16px;
-  text-align:center;
-  background:linear-gradient(to bottom,rgba(10,3,24,0.9),transparent);
-}
-.header h1{
-  font-size:28px;letter-spacing:12px;font-weight:300;
-  background:linear-gradient(135deg,#ffd6e8,#e8b4ff,#b4d4ff);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
-  text-shadow:none;
-}
-.header p{
-  margin-top:8px;font-size:12px;letter-spacing:4px;
-  color:rgba(255,210,230,0.5);
-}
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: #0a0a0f;
+            color: #fff;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
 
-.grid{
-  position:relative;z-index:5;
-  display:flex;justify-content:center;
-  padding:120px 40px 80px;
-  min-height:100vh;
-}
-.cards{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:20px;
-  max-width:960px;
-  width:100%;
-}
-.card{
-  position:relative;overflow:hidden;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,0.12);
-  background:rgba(255,255,255,0.05);
-  backdrop-filter:blur(12px);
-  cursor:pointer;
-  transition:transform .3s, box-shadow .3s, border-color .3s;
-  text-decoration:none;color:inherit;
-  aspect-ratio:3/4;
-  display:flex;flex-direction:column;justify-content:flex-end;
-  padding:20px;
-}
-.card:hover{
-  transform:translateY(-6px) scale(1.02);
-  box-shadow:0 20px 60px rgba(0,0,0,0.5);
-}
-.card-bg{
-  position:absolute;top:0;left:0;right:0;bottom:0;
-  background-size:cover;background-position:center;
-  transition:transform .4s;
-  filter:brightness(0.7) saturate(1.2);
-}
-.card:hover .card-bg{transform:scale(1.06);}
-.card-content{position:relative;z-index:2;}
-.card-emoji{font-size:28px;margin-bottom:8px;display:block;}
-.card-title{font-size:17px;letter-spacing:3px;font-weight:400;margin-bottom:4px;}
-.card-sub{font-size:11px;letter-spacing:2px;color:rgba(255,255,255,0.6);}
-.card-tag{
-  display:inline-block;margin-top:8px;
-  padding:2px 10px;border-radius:20px;
-  font-size:10px;letter-spacing:1px;
-  background:rgba(255,255,255,0.15);
-  border:1px solid rgba(255,255,255,0.2);
-}
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
 
-/* gradient overlays per card */
-.card::after{
-  content:'';position:absolute;
-  bottom:0;left:0;right:0;height:65%;
-  background:linear-gradient(to top,rgba(0,0,0,0.75),transparent);
-  z-index:1;
-}
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 60px 20px;
+        }
 
-/* individual card themes */
-.c-sakura3d { border-color:rgba(255,150,200,0.3); }
-.c-sakura3d:hover { box-shadow:0 20px 60px rgba(255,100,180,0.3); border-color:rgba(255,150,200,0.7); }
-.c-peach     { border-color:rgba(255,180,100,0.3); }
-.c-peach:hover { box-shadow:0 20px 60px rgba(255,160,80,0.3); border-color:rgba(255,180,100,0.7); }
-.c-ginkgo    { border-color:rgba(255,220,80,0.3); }
-.c-ginkgo:hover { box-shadow:0 20px 60px rgba(255,200,50,0.3); border-color:rgba(255,220,80,0.7); }
-.c-fractal   { border-color:rgba(120,200,255,0.3); }
-.c-fractal:hover { box-shadow:0 20px 60px rgba(80,180,255,0.25); border-color:rgba(120,200,255,0.7); }
-.c-heart     { border-color:rgba(255,150,200,0.3); }
-.c-heart:hover { box-shadow:0 20px 60px rgba(255,100,160,0.25); border-color:rgba(255,150,200,0.7); }
-.c-upward    { border-color:rgba(200,180,255,0.3); }
-.c-upward:hover { box-shadow:0 20px 60px rgba(180,150,255,0.25); border-color:rgba(200,180,255,0.7); }
-.c-swallow   { border-color:rgba(180,140,80,0.3); }
-.c-swallow:hover { box-shadow:0 20px 60px rgba(160,120,60,0.3); border-color:rgba(200,160,80,0.7); }
-.c-ink      { border-color:rgba(60,50,40,0.4); }
-.c-ink:hover { box-shadow:0 20px 60px rgba(40,30,20,0.5); border-color:rgba(80,65,45,0.8); }
-.c-tide     { border-color:rgba(30,80,160,0.35); }
-.c-tide:hover { box-shadow:0 20px 60px rgba(20,60,140,0.4); border-color:rgba(40,100,200,0.7); }
-.c-candle   { border-color:rgba(180,100,30,0.35); }
-.c-candle:hover { box-shadow:0 20px 60px rgba(160,80,20,0.4); border-color:rgba(220,130,40,0.7); }
-.c-vortex   { border-color:rgba(80,60,200,0.35); }
-.c-vortex:hover { box-shadow:0 20px 60px rgba(60,40,180,0.45); border-color:rgba(120,100,255,0.7); }
-.c-wet      { border-color:rgba(60,100,180,0.35); }
-.c-wet:hover { box-shadow:0 20px 60px rgba(40,80,160,0.4); border-color:rgba(80,140,220,0.7); }
-.c-spring   { border-color:rgba(200,100,130,0.35); }
-.c-spring:hover { box-shadow:0 20px 60px rgba(180,80,110,0.35); border-color:rgba(220,120,150,0.7); }
-.c-lotus    { border-color:rgba(80,160,200,0.35); }
-.c-lotus:hover { box-shadow:0 20px 60px rgba(40,120,180,0.45); border-color:rgba(120,200,240,0.7); }
-.c-jellyfish { border-color:rgba(100,160,200,0.35); }
-.c-jellyfish:hover { box-shadow:0 20px 60px rgba(60,140,200,0.35); border-color:rgba(130,200,240,0.7); }
-.c-tears    { border-color:rgba(140,170,200,0.3); }
-.c-tears:hover { box-shadow:0 20px 60px rgba(100,150,200,0.3); border-color:rgba(160,195,230,0.65); }
-.c-oldream  { border-color:rgba(180,150,100,0.3); }
-.c-oldream:hover { box-shadow:0 20px 60px rgba(160,130,60,0.35); border-color:rgba(220,190,120,0.7); }
-.c-trap     { border-color:rgba(200,50,50,0.35); }
-.c-trap:hover { box-shadow:0 20px 60px rgba(180,30,30,0.45); border-color:rgba(255,80,80,0.7); }
-.c-wish     { border-color:rgba(180,140,80,0.3); }
-.c-wish:hover { box-shadow:0 20px 60px rgba(150,100,50,0.35); border-color:rgba(200,160,80,0.7); }
-.c-wangran  { border-color:rgba(160,160,160,0.3); }
-.c-wangran:hover { box-shadow:0 20px 60px rgba(130,130,130,0.3); border-color:rgba(190,190,190,0.7); }
-.c-heartbeat{ border-color:rgba(50,180,100,0.3); }
-.c-heartbeat:hover{ box-shadow:0 20px 60px rgba(30,160,80,0.35); border-color:rgba(80,220,130,0.7); }
-.c-dream    { border-color:rgba(120,100,180,0.3); }
-.c-dream:hover { box-shadow:0 20px 60px rgba(100,80,160,0.35); border-color:rgba(160,140,220,0.7); }
+        /* Header */
+        header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
 
-.footer{
-  position:relative;z-index:10;
-  text-align:center;
-  padding:20px 0 36px;
-  font-size:11px;letter-spacing:3px;
-  color:rgba(255,200,220,0.3);
-}
-</style>
+        h1 {
+            font-size: clamp(2.5rem, 6vw, 5rem);
+            font-weight: 300;
+            letter-spacing: 0.3em;
+            margin-bottom: 20px;
+            background: linear-gradient(120deg, #fff 0%, #ffd1dc 30%, #e6b8ff 60%, #fff 100%);
+            background-size: 300% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientShift 8s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .subtitle {
+            font-size: clamp(0.9rem, 2vw, 1.1rem);
+            color: #999;
+            letter-spacing: 0.2em;
+            font-weight: 300;
+        }
+
+        /* Filter Nav */
+        .filter-nav {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 60px;
+        }
+
+        .filter-btn {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ccc;
+            cursor: pointer;
+            border-radius: 30px;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .filter-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .filter-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: transparent;
+            color: #fff;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        /* Cards Grid */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 40px;
+            perspective: 1000px;
+        }
+
+        @media (max-width: 768px) {
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (min-width: 769px) and (max-width: 1200px) {
+            .cards-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        /* Card */
+        .card {
+            position: relative;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 20px;
+            padding: 40px 30px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            cursor: pointer;
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+            transform-style: preserve-3d;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(50px);
+        }
+
+        .card.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.5s;
+            pointer-events: none;
+        }
+
+        .card:hover::before {
+            left: 100%;
+        }
+
+        .card:hover {
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            transform: translateY(-10px) scale(1.02);
+        }
+
+        .card-emoji {
+            font-size: 3.5rem;
+            margin-bottom: 20px;
+            display: block;
+            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+        }
+
+        .card-title {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        .card-subtitle {
+            font-size: 0.95rem;
+            color: #888;
+            margin-bottom: 20px;
+            letter-spacing: 0.05em;
+        }
+
+        .card-tag {
+            display: inline-block;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 15px;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+
+        /* Gradient backgrounds for categories */
+        .card[data-category="nature"] {
+            background: linear-gradient(135deg, rgba(34, 193, 195, 0.1) 0%, rgba(45, 253, 139, 0.05) 100%);
+        }
+
+        .card[data-category="poetry"] {
+            background: linear-gradient(135deg, rgba(253, 203, 110, 0.1) 0%, rgba(255, 130, 130, 0.05) 100%);
+        }
+
+        .card[data-category="emotion"] {
+            background: linear-gradient(135deg, rgba(142, 158, 171, 0.1) 0%, rgba(238, 242, 243, 0.02) 100%);
+        }
+
+        .card[data-category="installation"] {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%);
+        }
+
+        .card.hidden {
+            display: none;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 60px 20px 40px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        footer a {
+            color: #888;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        footer a:hover {
+            color: #fff;
+        }
+
+        /* Music Button */
+        .music-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: #fff;
+            font-size: 1.5rem;
+            cursor: pointer;
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .music-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 12px 30px rgba(102, 126, 234, 0.6);
+        }
+
+        .music-btn.playing {
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+    </style>
 </head>
 <body>
-<canvas id="bg"></canvas>
+    <canvas id="particle-canvas"></canvas>
 
-<div class="header">
-  <h1>花 · 树 · 展 览 馆</h1>
-  <p>BLOSSOM GALLERY</p>
-</div>
+    <div class="container">
+        <header>
+            <h1>花 · 树 · 展览馆</h1>
+            <p class="subtitle">BLOSSOM GALLERY · 22 Scenes</p>
+        </header>
 
-<div class="grid">
-  <div class="cards">
+        <nav class="filter-nav">
+            <button class="filter-btn active" data-filter="all">全部</button>
+            <button class="filter-btn" data-filter="nature">🌳 自然</button>
+            <button class="filter-btn" data-filter="poetry">📜 诗词</button>
+            <button class="filter-btn" data-filter="emotion">💫 情绪</button>
+            <button class="filter-btn" data-filter="installation">🎨 装置</button>
+        </nav>
 
-    <a class="card c-sakura3d" href="sakura3d.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#1a0a3e,#5a1a7a,#c04090);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌸</span>
-        <div class="card-title">樱花物语</div>
-        <div class="card-sub">Sakura · 3D</div>
-        <span class="card-tag">花苞 盛开 花雨 新叶</span>
-      </div>
-    </a>
+        <div class="cards-grid" id="cards-grid"></div>
 
-    <a class="card c-peach" href="peach.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#1a0a08,#6a2010,#e06030);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🍑</span>
-        <div class="card-title">桃树四季</div>
-        <div class="card-sub">Peach Tree · 3D</div>
-        <span class="card-tag">萌芽 生长 桃花 结果 落叶</span>
-      </div>
-    </a>
+        <footer>
+            <p>Made with Canvas 2D & Three.js</p>
+            <p><a href="https://github.com" target="_blank">GitHub</a></p>
+        </footer>
+    </div>
 
-    <a class="card c-ginkgo" href="ginkgo.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#0a0800,#3a2800,#c08000);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🍂</span>
-        <div class="card-title">银杏秋色</div>
-        <div class="card-sub">Ginkgo · 3D</div>
-        <span class="card-tag">新绿 夏荫 金秋 落叶</span>
-      </div>
-    </a>
+    <button class="music-btn" id="music-btn">🔊</button>
 
-    <a class="card c-fractal" href="fractal.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#020820,#081840,#104080);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌿</span>
-        <div class="card-title">分形生长</div>
-        <div class="card-sub">Fractal Tree · 2D</div>
-        <span class="card-tag">L-System 递归算法</span>
-      </div>
-    </a>
+    <script>
+        // Scenes data
+        const scenes = [
+            { file: 'sakura3d.html', emoji: '🌸', title: '樱花物语', subtitle: 'Sakura·3D', category: 'nature' },
+            { file: 'peach.html', emoji: '🍑', title: '桃树四季', subtitle: 'Peach Tree·3D', category: 'nature' },
+            { file: 'ginkgo.html', emoji: '🍂', title: '银杏秋色', subtitle: 'Ginkgo·3D', category: 'nature' },
+            { file: 'fractal.html', emoji: '🌿', title: '分形生长', subtitle: 'Fractal Tree', category: 'nature' },
+            { file: 'heart.html', emoji: '❤️', title: '爱心樱花', subtitle: 'Heart Blossom', category: 'nature' },
+            { file: 'upward.html', emoji: '🌸', title: '等枝桠成繁华', subtitle: 'Upward View', category: 'nature' },
+            { file: 'spring.html', emoji: '🌸', title: '春天loading', subtitle: 'Spring', category: 'nature' },
+            { file: 'lotus.html', emoji: '🪷', title: '江南可采莲', subtitle: 'Nymphéas·Monet', category: 'nature' },
+            { file: 'swallow.html', emoji: '🕊️', title: '燕返', subtitle: 'Letter·Canvas', category: 'poetry' },
+            { file: 'ink-tree.html', emoji: '🖋️', title: '墨梅', subtitle: 'Ink Tree', category: 'poetry' },
+            { file: 'tide.html', emoji: '🌊', title: '潮汐', subtitle: 'Tide Text', category: 'poetry' },
+            { file: 'candle.html', emoji: '🕯️', title: '烛火', subtitle: 'Candle Letter', category: 'poetry' },
+            { file: 'wangran.html', emoji: '🦋', title: '惘然 锦瑟', subtitle: 'Wangran', category: 'poetry' },
+            { file: 'vortex.html', emoji: '🌀', title: '漩涡', subtitle: 'Vortex', category: 'emotion' },
+            { file: 'wet.html', emoji: '🌧️', title: '湿帘', subtitle: 'Rain Glass', category: 'emotion' },
+            { file: 'oldream.html', emoji: '🌙', title: '旧梦', subtitle: 'Old Dream', category: 'emotion' },
+            { file: 'trap.html', emoji: '🕸️', title: '陷阱', subtitle: 'Trap', category: 'emotion' },
+            { file: 'wish.html', emoji: '🌓', title: '愿与愁', subtitle: 'Wish & Sorrow', category: 'emotion' },
+            { file: 'heartbeat.html', emoji: '💓', title: '心事', subtitle: 'Heartbeat', category: 'emotion' },
+            { file: 'tears.html', emoji: '💧', title: '沪·泣', subtitle: 'Tears·Data Art', category: 'emotion' },
+            { file: 'jellyfish.html', emoji: '🪼', title: '水母灯', subtitle: 'Jellyfish·Watercolor', category: 'installation' },
+            { file: 'dreamcatcher.html', emoji: '🪺', title: '捕梦', subtitle: 'Dreamcatcher', category: 'installation' }
+        ];
 
-    <a class="card c-heart" href="heart.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#200010,#600030,#d04070);"></div>
-      <div class="card-content">
-        <span class="card-emoji">❤️</span>
-        <div class="card-title">爱心樱花</div>
-        <div class="card-sub">Heart Blossom · 2D</div>
-        <span class="card-tag">博物馆系列</span>
-      </div>
-    </a>
+        // Render cards
+        const cardsGrid = document.getElementById('cards-grid');
+        scenes.forEach((scene, index) => {
+            const card = document.createElement('a');
+            card.href = scene.file;
+            card.className = 'card';
+            card.dataset.category = scene.category;
+            card.style.transitionDelay = `${index * 0.05}s`;
+            card.innerHTML = `
+                <span class="card-emoji">${scene.emoji}</span>
+                <div class="card-title">${scene.title}</div>
+                <div class="card-subtitle">${scene.subtitle}</div>
+                <span class="card-tag">${getCategoryName(scene.category)}</span>
+            `;
+            cardsGrid.appendChild(card);
 
-    <a class="card c-upward" href="upward.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#080018,#280848,#603080);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌸</span>
-        <div class="card-title">等枝桠成繁华</div>
-        <div class="card-sub">Upward View · 2D</div>
-        <span class="card-tag">仰视视角</span>
-      </div>
-    </a>
+            // 3D tilt effect
+            card.addEventListener('mousemove', (e) => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const centerX = rect.width / 2;
+                const centerY = rect.height / 2;
+                const rotateX = (y - centerY) / 10;
+                const rotateY = (centerX - x) / 10;
+                card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-10px) scale(1.02)`;
+            });
 
-    <a class="card c-swallow" href="swallow.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#1a120a,#3a2810,#6a4820);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🕊️</span>
-        <div class="card-title">燕  返</div>
-        <div class="card-sub">Letter · Canvas 2D</div>
-        <span class="card-tag">似曾相识燕归来</span>
-      </div>
-    </a>
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = '';
+            });
+        });
 
-    <a class="card c-ink" href="ink-tree.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#f5f0e8,#e8e0d0,#d8cdb8);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🖋️</span>
-        <div class="card-title" style="color:#2a1f14">墨  梅</div>
-        <div class="card-sub" style="color:#6a5a48">Ink Tree · Canvas 2D</div>
-        <span class="card-tag">水墨写意</span>
-      </div>
-    </a>
+        function getCategoryName(category) {
+            const names = {
+                nature: '🌳 自然',
+                poetry: '📜 诗词',
+                emotion: '💫 情绪',
+                installation: '🎨 装置'
+            };
+            return names[category] || category;
+        }
 
-    <a class="card c-tide" href="tide.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#070b18,#0e1f3a,#152545);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌊</span>
-        <div class="card-title">潮  汐</div>
-        <div class="card-sub">Tide Text · Canvas 2D</div>
-        <span class="card-tag">前赤壁赋</span>
-      </div>
-    </a>
+        // Filter functionality
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                filterBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const filter = btn.dataset.filter;
+                const cards = document.querySelectorAll('.card');
+                cards.forEach((card, index) => {
+                    if (filter === 'all' || card.dataset.category === filter) {
+                        card.classList.remove('hidden');
+                        setTimeout(() => card.classList.add('show'), index * 50);
+                    } else {
+                        card.classList.add('hidden');
+                        card.classList.remove('show');
+                    }
+                });
+            });
+        });
 
-    <a class="card c-candle" href="candle.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#0c0805,#1a1005,#2a1a08);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🕯️</span>
-        <div class="card-title">烛  火</div>
-        <div class="card-sub">Candle Letter · Canvas 2D</div>
-        <span class="card-tag">木兰花令</span>
-      </div>
-    </a>
+        // Intersection Observer for scroll animations
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('show');
+                }
+            });
+        }, { threshold: 0.1 });
 
-    <a class="card c-vortex" href="vortex.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#06080f,#0e0a28,#1a1248);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌀</span>
-        <div class="card-title">漩  涡</div>
-        <div class="card-sub">Vortex · Canvas 2D</div>
-        <span class="card-tag">归散念逝忘还</span>
-      </div>
-    </a>
+        document.querySelectorAll('.card').forEach(card => observer.observe(card));
 
-    <a class="card c-wet" href="wet.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#050810,#0a1525,#0d2040);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌧️</span>
-        <div class="card-title">湿  帘</div>
-        <div class="card-sub">Rain Glass · Canvas 2D</div>
-        <span class="card-tag">雨打玻璃</span>
-      </div>
-    </a>
+        // Particle canvas background
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-    <a class="card c-spring" href="spring.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#fafafa,#fce8ee,#f8d0da);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌸</span>
-        <div class="card-title" style="color:#3a1020">春天 loading</div>
-        <div class="card-sub" style="color:#8a4060">Spring · Canvas 2D</div>
-        <span class="card-tag" style="background:rgba(200,80,110,0.15);color:#c05070">UI破屏</span>
-      </div>
-    </a>
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.5;
+                this.radius = Math.random() * 2 + 1;
+                this.opacity = Math.random() * 0.5 + 0.2;
+            }
 
-    <a class="card c-lotus" href="lotus.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#0a1628,#1a4060,#2a7090,#5a3060);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🪷</span>
-        <div class="card-title">江南可采莲</div>
-        <div class="card-sub">Nymphéas · Monet</div>
-        <span class="card-tag">莫奈印象派 水墨莲池</span>
-      </div>
-    </a>
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
+            }
 
-    <a class="card c-jellyfish" href="jellyfish.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#f5f5f0,#d8e8f0,#b0d0e0);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🪴</span>
-        <div class="card-title" style="color:#2a5a6a">水母灯</div>
-        <div class="card-sub" style="color:#5a8a9a">Jellyfish · Watercolor</div>
-        <span class="card-tag" style="background:rgba(80,160,200,0.12);color:#4a8a9a">水彩装置艺术</span>
-      </div>
-    </a>
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+                ctx.fill();
+            }
+        }
 
-    <a class="card c-tears" href="tears.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#eaeef2,#d0dae5,#b8c8d8);"></div>
-      <div class="card-content">
-        <span class="card-emoji">💧</span>
-        <div class="card-title" style="color:#3a5a70">沪 · 泣</div>
-        <div class="card-sub" style="color:#6a8a9a">Tears · Data Art</div>
-        <span class="card-tag" style="background:rgba(100,150,190,0.12);color:#4a7a90">诗意数据可视化</span>
-      </div>
-    </a>
+        const particles = Array.from({ length: 100 }, () => new Particle());
 
-    <a class="card c-oldream" href="oldream.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#0a0820,#1a1040,#2a1850);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌙</span>
-        <div class="card-title">旧  梦</div>
-        <div class="card-sub">Old Dream · Canvas 2D</div>
-        <span class="card-tag">光晕溶解 如梦如烟</span>
-      </div>
-    </a>
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
 
-    <a class="card c-trap" href="trap.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#0a0000,#1a0808,#300a0a);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🕸️</span>
-        <div class="card-title">陷  阱</div>
-        <div class="card-sub">Trap · Canvas 2D</div>
-        <span class="card-tag">暗黑几何坍缩</span>
-      </div>
-    </a>
+            // Draw connections
+            particles.forEach((p1, i) => {
+                particles.slice(i + 1).forEach(p2 => {
+                    const dx = p1.x - p2.x;
+                    const dy = p1.y - p2.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 150) {
+                        ctx.beginPath();
+                        ctx.moveTo(p1.x, p1.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 * (1 - dist / 150)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                });
+            });
 
-    <a class="card c-wish" href="wish.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#2a1800,#1a1040,#0a0830);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🌓</span>
-        <div class="card-title">愿与愁</div>
-        <div class="card-sub">Wish & Sorrow · Canvas 2D</div>
-        <span class="card-tag">双色分割 诗句流动</span>
-      </div>
-    </a>
+            requestAnimationFrame(animate);
+        }
 
-    <a class="card c-wangran" href="wangran.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#e8e8e4,#d0d0cc,#a8a8a4);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🦋</span>
-        <div class="card-title" style="color:#3a3530">惘  然</div>
-        <div class="card-sub" style="color:#6a6560">锦瑟 · Canvas 2D</div>
-        <span class="card-tag" style="background:rgba(100,90,80,0.1);color:#6a6050">烟雾消散 庶生梦蝶</span>
-      </div>
-    </a>
+        animate();
 
-    <a class="card c-heartbeat" href="heartbeat.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#040810,#081420,#0a1a30);"></div>
-      <div class="card-content">
-        <span class="card-emoji">💓</span>
-        <div class="card-title">心  事</div>
-        <div class="card-sub">Heartbeat · Canvas 2D</div>
-        <span class="card-tag">心电图波形 文字爆破</span>
-      </div>
-    </a>
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
 
-    <a class="card c-dream" href="dreamcatcher.html">
-      <div class="card-bg" style="background:linear-gradient(135deg,#060818,#0a1030,#141848);"></div>
-      <div class="card-content">
-        <span class="card-emoji">🪢</span>
-        <div class="card-title">捕  梦</div>
-        <div class="card-sub">Dreamcatcher · Canvas 2D</div>
-        <span class="card-tag">捕梦网 星空粒子</span>
-      </div>
-    </a>
+        // Music button with Web Audio API
+        let audioContext = null;
+        let oscillators = [];
+        let isPlaying = false;
 
-  </div>
-</div>
+        const musicBtn = document.getElementById('music-btn');
+        musicBtn.addEventListener('click', () => {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
 
-<div class="footer">拖拽 · 旋转 · 感受四季</div>
+            if (isPlaying) {
+                oscillators.forEach(osc => osc.stop());
+                oscillators = [];
+                musicBtn.classList.remove('playing');
+                musicBtn.textContent = '🔊';
+                isPlaying = false;
+            } else {
+                // Create ambient pad sound with multiple oscillators
+                const frequencies = [220, 277, 330, 440]; // A major chord
+                const now = audioContext.currentTime;
 
-<script>
-// Floating petal particle background
-const canvas = document.getElementById('bg');
-const ctx = canvas.getContext('2d');
-let W, H;
-function resize(){ W=canvas.width=innerWidth; H=canvas.height=innerHeight; }
-resize(); window.addEventListener('resize',resize);
+                frequencies.forEach((freq, i) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+                    
+                    osc.type = 'sine';
+                    osc.frequency.value = freq;
+                    
+                    gain.gain.setValueAtTime(0, now);
+                    gain.gain.linearRampToValueAtTime(0.03, now + 2);
+                    
+                    osc.connect(gain);
+                    gain.connect(audioContext.destination);
+                    
+                    osc.start(now);
+                    oscillators.push(osc);
+                });
 
-const petals = Array.from({length:60},()=>({
-  x: Math.random()*2000-500,
-  y: Math.random()*1500-200,
-  r: 1.5+Math.random()*3.5,
-  vx: -0.2-Math.random()*0.5,
-  vy: 0.15+Math.random()*0.35,
-  phase: Math.random()*Math.PI*2,
-  hue: 280+Math.random()*80,
-  alpha: 0.2+Math.random()*0.4,
-}));
-
-let t=0;
-function draw(){
-  ctx.clearRect(0,0,W,H);
-  t+=0.012;
-  // star field
-  ctx.save();
-  for(let i=0;i<120;i++){
-    const sx=(i*137.5%W), sy=(i*97.3%H);
-    const sa=0.2+Math.sin(t*0.8+i)*0.15;
-    ctx.beginPath();
-    ctx.arc(sx,sy,0.6+Math.sin(i)*0.4,0,Math.PI*2);
-    ctx.fillStyle=`rgba(255,220,255,${sa})`;
-    ctx.fill();
-  }
-  ctx.restore();
-
-  // petals
-  for(const p of petals){
-    p.x += p.vx + Math.sin(t*0.6+p.phase)*0.3;
-    p.y += p.vy + Math.cos(t*0.5+p.phase)*0.15;
-    if(p.y>H+20) p.y=-20;
-    if(p.x<-20) p.x=W+20;
-    ctx.save();
-    ctx.translate(p.x,p.y);
-    ctx.rotate(t*0.3+p.phase);
-    ctx.beginPath();
-    // simple heart petal
-    ctx.moveTo(0,0);
-    ctx.bezierCurveTo(-p.r,-p.r*0.5,-p.r*1.5,-p.r*2,-p.r*0.3,-p.r*2.5);
-    ctx.bezierCurveTo(p.r*0.3,-p.r*2.8,p.r*0.5,-p.r*1.5,0,0);
-    ctx.fillStyle=`hsla(${p.hue},70%,80%,${p.alpha})`;
-    ctx.fill();
-    ctx.restore();
-  }
-  requestAnimationFrame(draw);
-}
-draw();
-</script>
+                musicBtn.classList.add('playing');
+                musicBtn.textContent = '🔇';
+                isPlaying = true;
+            }
+        });
+    </script>
 </body>
 </html>

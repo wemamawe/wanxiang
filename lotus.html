@@ -9,7 +9,7 @@
   
   body {
     background: #0a1628;
-    overflow: hidden;
+    overflow: hidden; touch-action: none;
     font-family: 'STKaiti', 'KaiTi', serif;
     width: 100vw;
     height: 100vh;
@@ -891,6 +891,48 @@ setTimeout(() => {
 window.addEventListener('resize', resize);
 resize();
 animate();
+</script>
+
+<script>
+// Generated Audio System - 蛙鸣+水声
+// 蛙鸣+水声音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 水滴
+  function drop(){
+    if(!isActive)return;
+    const bufSz=ctx.sampleRate*0.08,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+    for(let i=0;i<bufSz;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/bufSz*6);
+    const src=ctx.createBufferSource();src.buffer=buf;
+    const g=ctx.createGain();g.gain.value=0.12;
+    src.connect(g);g.connect(master);src.start();
+    setTimeout(drop,800+Math.random()*2000);
+  }
+  
+  // 蛙鸣
+  function croak(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=180+Math.random()*80;o.type='square';
+    g.gain.setValueAtTime(0.10,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+0.18);
+    setTimeout(croak,1500+Math.random()*3000);
+  }
+  drop();croak();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

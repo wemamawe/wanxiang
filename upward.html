@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>等枝桠成繁华</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -10,6 +10,7 @@
     background: #7bbfd8;
     display: flex; align-items: center; justify-content: center;
     min-height: 100vh; overflow: hidden;
+    touch-action:none;
   }
   canvas { display: block; }
 </style>
@@ -19,9 +20,20 @@
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const W = 520, H = 640;
+let W = window.innerWidth, H = window.innerHeight;
 canvas.width = W;
 canvas.height = H;
+
+function handleResize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+  // 重新构建树
+  branches.length=0; totalB=0;
+  buildTree(W*0.18, -10, Math.PI/2 + 0.3,  0, 5);
+  buildTree(W*0.55, -10, Math.PI/2 - 0.1,  0, 5);
+  buildTree(W*0.85, -10,  Math.PI/2 - 0.35, 0, 4);
+}
+window.addEventListener('resize',handleResize);
 
 // ── Branch node ──
 const branches = [];
@@ -353,6 +365,37 @@ setTimeout(() => {
     animate();
   }
 }, 3000);
+</script>
+
+<script>
+// Generated Audio System - 空灵人声pad
+// 空灵人声pad音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  const freqs=[220,277.18,329.63];
+  freqs.forEach((f,i)=>{
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    const vib=ctx.createOscillator(),vg=ctx.createGain();
+    o.frequency.value=f;o.type='sine';
+    vib.frequency.value=3.5+i*0.5;vg.gain.value=2;
+    vib.connect(vg);vg.connect(o.frequency);
+    g.gain.value=0.08/(i+1);
+    o.connect(g);g.connect(master);o.start();vib.start();
+  });
+  isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

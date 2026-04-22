@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>燕返 · 张爱玲</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -10,6 +10,7 @@
     background: #edeae2;
     display: flex; align-items: center; justify-content: center;
     min-height: 100vh; overflow: hidden;
+    touch-action:none;
   }
   canvas { display: block; }
 </style>
@@ -20,8 +21,14 @@
 
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
-const W = 520, H = 700;
+let W = window.innerWidth, H = window.innerHeight;
 canvas.width = W; canvas.height = H;
+
+function handleResize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+}
+window.addEventListener('resize',handleResize);
 
 // ══════════════════════════════════════════
 //  字体 & 信纸常量
@@ -431,6 +438,44 @@ function tick() {
 }
 
 tick();
+</script>
+
+<script>
+// Generated Audio System - 古琴泛音
+// 古琴泛音音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  const notes=[196,220,246.94,293.66,329.63];
+  function pluck(){
+    if(!isActive)return;
+    const f=notes[Math.floor(Math.random()*notes.length)];
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=f;o.type='triangle';
+    g.gain.setValueAtTime(0.12,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+1.5);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+1.8);
+    // 高频泛音
+    const h=ctx.createOscillator(),hg=ctx.createGain();
+    h.frequency.value=f*3;h.type='sine';
+    hg.gain.setValueAtTime(0.04,ctx.currentTime);
+    hg.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.8);
+    h.connect(hg);hg.connect(master);h.start();h.stop(ctx.currentTime+1);
+    setTimeout(pluck,2000+Math.random()*3000);
+  }
+  pluck();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

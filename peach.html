@@ -6,7 +6,7 @@
 <title>桃树 · Peach Tree v3</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-body { background:#87ceeb; overflow:hidden; font-family:'PingFang SC','Microsoft YaHei',sans-serif; }
+body { background:#87ceeb; overflow:hidden;touch-action:none; font-family:'PingFang SC','Microsoft YaHei',sans-serif; }
 #ui {
   position:fixed; bottom:36px; left:50%; transform:translateX(-50%);
   display:flex; gap:10px; z-index:10;
@@ -51,7 +51,7 @@ import * as THREE from 'three';
 // ── Renderer ──
 const renderer = new THREE.WebGLRenderer({ antialias:true });
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(innerWidth,innerHeight);
+renderer.setSize(window.innerWidth,window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -69,7 +69,7 @@ camera.lookAt(0, 3.5, 0);
 window.addEventListener('resize',()=>{
   camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(window.innerWidth,window.innerHeight);
 });
 
 // ── Sky gradient ──
@@ -602,6 +602,47 @@ renderer.setAnimationLoop(()=>{
 
   renderer.render(scene,camera);
 });
+</script>
+
+<script>
+// Generated Audio System - 鸟鸣+溪流
+// 鸟鸣+溪流音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 棕噪声溪流
+  const bufSz=ctx.sampleRate*3,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+  let last=0;for(let i=0;i<bufSz;i++){last=(last+((Math.random()*2-1)*0.1))*0.98;d[i]=last*3;}
+  const stream=ctx.createBufferSource();stream.buffer=buf;stream.loop=true;
+  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=600;
+  const sg=ctx.createGain();sg.gain.value=0.20;
+  stream.connect(lp);lp.connect(sg);sg.connect(master);stream.start();
+  
+  // 鸟鸣啁啾
+  function chirp(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.setValueAtTime(800,ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(1800,ctx.currentTime+0.08);
+    o.type='sine';
+    g.gain.setValueAtTime(0.12,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.2);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+0.25);
+    setTimeout(chirp,800+Math.random()*2500);
+  }
+  chirp();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

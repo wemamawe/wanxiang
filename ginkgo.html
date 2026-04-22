@@ -6,7 +6,7 @@
 <title>银杏 · Ginkgo Seasons</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:#0a0800;overflow:hidden;font-family:'PingFang SC','Microsoft YaHei',sans-serif;}
+body{background:#0a0800;overflow:hidden;touch-action:none;font-family:'PingFang SC','Microsoft YaHei',sans-serif;}
 canvas{display:block;}
 #ui{
   position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
@@ -56,12 +56,12 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.mod
 
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(innerWidth,innerHeight);
+renderer.setSize(window.innerWidth,window.innerHeight);camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 window.addEventListener('resize',()=>{
-  renderer.setSize(innerWidth,innerHeight);
+  renderer.setSize(window.innerWidth,window.innerHeight);camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();
   camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
 });
@@ -519,6 +519,39 @@ renderer.setAnimationLoop(()=>{
 
   renderer.render(scene,camera);
 });
+</script>
+
+<script>
+// Generated Audio System - 秋风沙沙
+// 秋风沙沙音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 白噪声秋风
+  const bufSz=ctx.sampleRate*2,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<bufSz;i++)d[i]=Math.random()*2-1;
+  const wind=ctx.createBufferSource();wind.buffer=buf;wind.loop=true;
+  const bp=ctx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=500;bp.Q.value=1.2;
+  const wg=ctx.createGain();wg.gain.value=0.30;
+  wind.connect(bp);bp.connect(wg);wg.connect(master);wind.start();
+  
+  // 低频呼吸调制
+  const lfo=ctx.createOscillator();lfo.frequency.value=0.15;
+  const lfog=ctx.createGain();lfog.gain.value=0.12;
+  lfo.connect(lfog);lfog.connect(wg.gain);lfo.start();
+  isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

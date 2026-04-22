@@ -11,7 +11,7 @@
     display: flex; align-items: center; justify-content: center;
     min-height: 100vh; overflow: hidden;
   }
-  canvas { display: block; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 </style>
 </head>
 <body>
@@ -19,8 +19,10 @@
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const W = 480, H = 630;
+let W = window.innerWidth, H = window.innerHeight;
 canvas.width = W; canvas.height = H;
+
+window.addEventListener("resize", () => { W = window.innerWidth; H = window.innerHeight; canvas.width = W; canvas.height = H; prepareLabel(); });
 
 const OX = 240, OY = 455;
 
@@ -420,9 +422,53 @@ window.addEventListener('pretext-ready', () => {
 setTimeout(() => {
   if (!labelLines) {
     console.warn('Pretext CDN timeout, running without label');
+// 触摸支持（防止页面滑动）
+canvas.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+canvas.addEventListener('touchend', (e) => { e.preventDefault(); }, { passive: false });
     loop();
   }
 }, 3000);
+</script>
+
+<script>
+// Generated Audio System - 轻柔钢琴和弦
+// 轻柔钢琴和弦音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  const chords=[[261.63,329.63,392],[293.66,369.99,440],[246.94,311.13,369.99]];
+  let idx=0;
+  function chord(){
+    if(!isActive)return;
+    const notes=chords[idx%chords.length];idx++;
+    notes.forEach((f,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.frequency.value=f;o.type='sine';
+      g.gain.setValueAtTime(0,ctx.currentTime);
+      g.gain.linearRampToValueAtTime(0.06/(i+1),ctx.currentTime+0.05);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+2.8);
+      o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+3);
+      // 泛音
+      const h=ctx.createOscillator(),hg=ctx.createGain();
+      h.frequency.value=f*2;h.type='sine';hg.gain.value=0.02;
+      h.connect(hg);hg.connect(master);h.start();h.stop(ctx.currentTime+2.5);
+    });
+    setTimeout(chord,3000+Math.random()*2000);
+  }
+  chord();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

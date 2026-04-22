@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>只是当时已惘然 · 锦瑟</title>
     <style>
         * {
@@ -19,6 +19,7 @@
             background: linear-gradient(180deg, #f5f5f0 0%, #d8d8d0 50%, #a0a09a 100%);
             overflow: hidden;
             font-family: 'KaiTi', 'STKaiti', 'BiauKai', serif;
+            touch-action:none;
         }
         canvas {
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -27,12 +28,18 @@
     </style>
 </head>
 <body>
-    <canvas id="canvas" width="520" height="700"></canvas>
+    <canvas id="canvas"></canvas>
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const W = canvas.width;
-        const H = canvas.height;
+        let W = canvas.width = window.innerWidth;
+        let H = canvas.height = window.innerHeight;
+
+        function handleResize(){
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize',handleResize);
 
         // 李商隐《锦瑟》全文（竖排从右到左）
         const poem = [
@@ -318,5 +325,45 @@
 
         animate();
     </script>
+
+<script>
+// Generated Audio System - 古筝散板
+// 古筝散板音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  const notes=[293.66,329.63,392,440,493.88];
+  function pluck(){
+    if(!isActive)return;
+    const f=notes[Math.floor(Math.random()*notes.length)];
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=f;o.type='triangle';
+    g.gain.setValueAtTime(0.14,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+2.0);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+2.3);
+    // 泛音衰减
+    [2,3].forEach(h=>{
+      const oh=ctx.createOscillator(),gh=ctx.createGain();
+      oh.frequency.value=f*h;oh.type='sine';
+      gh.gain.setValueAtTime(0.04/h,ctx.currentTime);
+      gh.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+1.2/h);
+      oh.connect(gh);gh.connect(master);oh.start();oh.stop(ctx.currentTime+1.5/h);
+    });
+    setTimeout(pluck,1800+Math.random()*3200);
+  }
+  pluck();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
+</script>
 </body>
 </html>

@@ -6,7 +6,7 @@
 <title>水母灯 · Jellyfish Chandelier</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:#f8f8f8;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:100vh;}
+body{background:#f8f8f8;overflow:hidden;touch-action:none;display:flex;align-items:center;justify-content:center;min-height:100vh;}
 canvas{display:block;}
 #hint{position:fixed;bottom:4%;left:50%;transform:translateX(-50%);
   font:italic 12px Georgia,serif;color:rgba(80,120,140,0.4);
@@ -517,6 +517,44 @@ resize();
 setTimeout(() => document.getElementById('title').classList.add('show'), 800);
 
 draw();
+</script>
+
+<script>
+// Generated Audio System - 水下气泡
+// 水下气泡音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  function bubble(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.setValueAtTime(300+Math.random()*200,ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(600+Math.random()*400,ctx.currentTime+0.25);
+    o.type='sine';
+    g.gain.setValueAtTime(0.08,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.3);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+0.35);
+    // 噪声气泡
+    const bufSz=ctx.sampleRate*0.05,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+    for(let i=0;i<bufSz;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/bufSz*10);
+    const src=ctx.createBufferSource();src.buffer=buf;
+    const ng=ctx.createGain();ng.gain.value=0.06;
+    src.connect(ng);ng.connect(master);src.start();
+    setTimeout(bubble,500+Math.random()*1500);
+  }
+  bubble();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

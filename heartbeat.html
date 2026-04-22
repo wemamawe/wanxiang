@@ -17,7 +17,7 @@
             align-items: center;
             min-height: 100vh;
             font-family: 'Courier New', monospace;
-            overflow: hidden;
+            overflow: hidden; touch-action: none;
         }
         canvas {
             border: 1px solid #0a3d62;
@@ -26,12 +26,12 @@
     </style>
 </head>
 <body>
-    <canvas id="canvas" width="520" height="700"></canvas>
+    <canvas id="canvas"></canvas>
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
+        let width = window.innerWidth;
+        let height = window.innerHeight; canvas.width = width; canvas.height = height;
         
         // 鼠标位置
         let mouseX = width / 2;
@@ -62,6 +62,22 @@
             const rect = canvas.getBoundingClientRect();
             mouseX = e.clientX - rect.left;
             mouseY = e.clientY - rect.top;
+        });
+        
+        // 触摸支持
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            mouseX = touch.clientX - rect.left;
+            mouseY = touch.clientY - rect.top;
         });
         
         // 计算基于鼠标距离中心的心率
@@ -301,8 +317,63 @@
         ctx.fillStyle = '#050a14';
         ctx.fillRect(0, 0, width, height);
         
+        // Resize 监听
+        window.addEventListener('resize', () => {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            waveformData = [];
+        });
+        
         // 启动动画
         animate();
     </script>
+
+<script>
+// Generated Audio System - 心跳+呼吸
+// 心跳+呼吸音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 呼吸白噪声
+  const bufSz=ctx.sampleRate*2,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<bufSz;i++)d[i]=Math.random()*2-1;
+  const breath=ctx.createBufferSource();breath.buffer=buf;breath.loop=true;
+  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=200;
+  const bg=ctx.createGain();bg.gain.value=0.05;
+  breath.connect(lp);lp.connect(bg);bg.connect(master);breath.start();
+  
+  // 心跳脉冲
+  function beat(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=55;o.type='sine';
+    g.gain.setValueAtTime(0.18,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+0.18);
+    setTimeout(()=>{
+      const o2=ctx.createOscillator(),g2=ctx.createGain();
+      o2.frequency.value=65;o2.type='sine';
+      g2.gain.setValueAtTime(0.12,ctx.currentTime);
+      g2.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.12);
+      o2.connect(g2);g2.connect(master);o2.start();o2.stop(ctx.currentTime+0.15);
+    },120);
+    setTimeout(beat,1000);
+  }
+  beat();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
+</script>
 </body>
 </html>

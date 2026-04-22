@@ -2,11 +2,11 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <title>樱花 · Sakura in Bloom</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:#1a0a2e;overflow:hidden;font-family:'PingFang SC','Microsoft YaHei',sans-serif;}
+body{background:#1a0a2e;overflow:hidden;font-family:'PingFang SC','Microsoft YaHei',sans-serif;touch-action:none;}
 canvas{display:block;}
 #ui{
   position:fixed;bottom:28px;left:50%;transform:translateX(-50%);
@@ -22,13 +22,13 @@ canvas{display:block;}
 .btn.active{background:rgba(255,150,190,0.45);border-color:rgba(255,120,170,0.9);color:#fff;}
 #caption{
   position:fixed;top:36px;left:50%;transform:translateX(-50%);
-  color:rgba(255,230,240,0.90);font-size:19px;letter-spacing:6px;
+  color:rgba(255,230,240,0.90);font-size:calc(min(100vw,100vh)*0.038);letter-spacing:0.12em;
   text-shadow:0 0 20px rgba(255,150,200,0.8), 0 2px 8px rgba(0,0,0,0.4);
   transition:opacity .5s;pointer-events:none;
 }
 #hint{
   position:fixed;bottom:72px;left:50%;transform:translateX(-50%);
-  color:rgba(255,200,220,0.45);font-size:11px;letter-spacing:2px;pointer-events:none;
+  color:rgba(255,200,220,0.45);font-size:calc(min(100vw,100vh)*0.022);letter-spacing:0.08em;pointer-events:none;
 }
 </style>
 </head>
@@ -49,20 +49,23 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.mod
 // ── Renderer ──
 const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(innerWidth,innerHeight);
+renderer.setSize(window.innerWidth,window.innerHeight);
 renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
-window.addEventListener('resize',()=>{
-  renderer.setSize(innerWidth,innerHeight);
-  camera.aspect=innerWidth/innerHeight;
+function handleResize(){
+  const w=window.innerWidth,h=window.innerHeight;
+  renderer.setSize(w,h);
+  camera.aspect=w/h;
   camera.updateProjectionMatrix();
-});
+}
+window.addEventListener('resize',handleResize);
+handleResize();
 
 // ── Scene & Camera ──
 const scene=new THREE.Scene();
 scene.fog=new THREE.FogExp2(0x2d0a3e,0.018);
-const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.1,300);
+const camera=new THREE.PerspectiveCamera(55,window.innerWidth/window.innerHeight,0.1,300);
 camera.position.set(0,5,20);
 camera.lookAt(0,4,0);
 
@@ -733,6 +736,45 @@ document.getElementById('sound-btn').addEventListener('click',()=>{
     document.getElementById('sound-btn').textContent=isPlaying?'🔊 音效':'🔇 音效';
   }
 });
+</script>
+
+<script>
+// Generated Audio System - 风铃+微风
+// 风铃+微风音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 白噪声微风
+  const bufSz=ctx.sampleRate*2,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<bufSz;i++)d[i]=Math.random()*2-1;
+  const wind=ctx.createBufferSource();wind.buffer=buf;wind.loop=true;
+  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=300;
+  const wg=ctx.createGain();wg.gain.value=0.25;
+  wind.connect(lp);lp.connect(wg);wg.connect(master);wind.start();
+  
+  // 风铃叮当
+  function chime(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=1200+Math.random()*800;o.type='sine';
+    g.gain.setValueAtTime(0.08,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+1.5);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+1.8);
+    setTimeout(chime,1500+Math.random()*3500);
+  }
+  chime();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

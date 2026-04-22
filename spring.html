@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>春天 loading…</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -11,6 +11,7 @@ body {
   display:flex; align-items:center; justify-content:center;
   min-height:100vh; overflow:hidden;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+  touch-action:none;
 }
 canvas { display:block; }
 </style>
@@ -20,8 +21,19 @@ canvas { display:block; }
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const W = 520, H = 700;
+let W = window.innerWidth, H = window.innerHeight;
 canvas.width = W; canvas.height = H;
+
+function handleResize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+  buildTree(0,H*0.05,0.40,85,9,F_UI_DONE,0.22);
+  buildTree(W,H*0.02,Math.PI-0.35,78,8,F_UI_DONE+10,0.22);
+  buildTree(0,H*0.50,0.18,60,7,F_UI_DONE+20,0.28);
+  buildTree(W*0.18,H,-Math.PI/2+0.28,55,6,F_UI_DONE+25,0.28);
+  buildTree(W*0.80,H,-Math.PI/2-0.22,50,6,F_UI_DONE+30,0.28);
+}
+window.addEventListener('resize',handleResize);
 
 // ══════════════════════════════════════════════════
 //  帧时间轴（全部用帧数，不用比例，避免换算混乱）
@@ -326,6 +338,47 @@ function tick() {
 }
 
 tick();
+</script>
+
+<script>
+// Generated Audio System - 春天鸟语
+// 春天鸟语音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 微风
+  const bufSz=ctx.sampleRate*2,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<bufSz;i++)d[i]=Math.random()*2-1;
+  const wind=ctx.createBufferSource();wind.buffer=buf;wind.loop=true;
+  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=350;
+  const wg=ctx.createGain();wg.gain.value=0.08;
+  wind.connect(lp);lp.connect(wg);wg.connect(master);wind.start();
+  
+  // 鸟鸣
+  function chirp(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.setValueAtTime(1000+Math.random()*800,ctx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(1600+Math.random()*400,ctx.currentTime+0.06);
+    o.type='sine';
+    g.gain.setValueAtTime(0.14,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.15);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+0.18);
+    setTimeout(chirp,600+Math.random()*1800);
+  }
+  chirp();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

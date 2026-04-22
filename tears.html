@@ -2,11 +2,11 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>泪 · Tears Data</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:#f0f0ee;overflow:hidden;width:100vw;height:100vh;}
+body{background:#f0f0ee;overflow:hidden;width:100vw;height:100vh;touch-action:none;}
 canvas{position:fixed;top:0;left:0;width:100%;height:100%;}
 #ui{position:fixed;bottom:4%;left:50%;transform:translateX(-50%);z-index:10;
   display:flex;gap:18px;pointer-events:auto;}
@@ -27,7 +27,9 @@ canvas{position:fixed;top:0;left:0;width:100%;height:100%;}
 <script>
 const C = document.getElementById('c');
 const ctx = C.getContext('2d');
-let W, H, time = 0;
+let W = window.innerWidth, H = window.innerHeight;
+C.width = W; C.height = H;
+let time = 0;
 let mode = 'rain'; // 'rain' or 'vortex'
 let modeT = 0;     // 模式过渡 0=rain, 1=vortex
 let mouseX = -1, mouseY = -1;
@@ -56,6 +58,7 @@ function resize() {
   buildLeaves();
   buildGhostText();
 }
+window.addEventListener('resize',resize);
 
 function setMode(m) {
   mode = m;
@@ -418,9 +421,7 @@ function draw() {
 // ══════════════════════════════════════════════════
 C.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
 C.addEventListener('mouseleave', () => { mouseX = -1; mouseY = -1; });
-C.addEventListener('touchmove', e => {
-  e.preventDefault(); mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY;
-}, { passive: false });
+C.addEventListener('touchmove', e => { e.preventDefault(); if(e.touches[0]){mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY;} }, { passive: false });
 C.addEventListener('touchend', () => { mouseX = -1; mouseY = -1; });
 
 // 键盘切换
@@ -432,6 +433,52 @@ document.addEventListener('keydown', e => {
 window.addEventListener('resize', resize);
 resize();
 draw();
+</script>
+
+<script>
+// Generated Audio System - 雨滴+忧郁钢琴
+// 雨滴+忧郁钢琴音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  // 雨滴噪声
+  function rain(){
+    if(!isActive)return;
+    const bufSz=ctx.sampleRate*0.03,buf=ctx.createBuffer(1,bufSz,ctx.sampleRate),d=buf.getChannelData(0);
+    for(let i=0;i<bufSz;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/bufSz*15);
+    const src=ctx.createBufferSource();src.buffer=buf;
+    const g=ctx.createGain();g.gain.value=0.10;
+    src.connect(g);g.connect(master);src.start();
+    setTimeout(rain,100+Math.random()*200);
+  }
+  
+  // 钢琴和弦
+  const notes=[220,246.94,277.18,293.66];
+  function chord(){
+    if(!isActive)return;
+    const f=notes[Math.floor(Math.random()*notes.length)];
+    [f,f*1.2,f*1.5].forEach((freq,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.frequency.value=freq;o.type='sine';
+      g.gain.setValueAtTime(0.05/(i+1),ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+2.2);
+      o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+2.5);
+    });
+    setTimeout(chord,2500+Math.random()*2000);
+  }
+  rain();chord();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>

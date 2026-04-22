@@ -2,11 +2,11 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>湿帘 · 重制</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#f4f6f8; display:flex; align-items:center; justify-content:center; min-height:100vh; overflow:hidden; }
+  body { background:#f4f6f8; display:flex; align-items:center; justify-content:center; min-height:100vh; overflow:hidden; touch-action:none; }
   canvas { display:block; }
 </style>
 </head>
@@ -15,8 +15,17 @@
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-const W = 520, H = 700;
+let W = window.innerWidth, H = window.innerHeight;
 canvas.width = W; canvas.height = H;
+
+function handleResize(){
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W; canvas.height = H;
+  // 重置水珠
+  drops.length=0;
+  drops = Array.from({length: 28}, () => new Drop());
+}
+window.addEventListener('resize',handleResize);
 
 // ══════════════════════════════════════
 //  水珠类
@@ -286,6 +295,36 @@ function tick() {
 }
 
 tick();
+</script>
+
+<script>
+// Generated Audio System - 雨滴打窗
+// 雨滴打窗音效
+let ctx, master, isActive=false;
+function initAudio(){
+  if(ctx) return;
+  ctx=new(AudioContext||webkitAudioContext)();
+  master=ctx.createGain();master.gain.value=0.15;master.connect(ctx.destination);
+  
+  function raindrop(){
+    if(!isActive)return;
+    const o=ctx.createOscillator(),g=ctx.createGain();
+    o.frequency.value=800+Math.random()*1200;o.type='sine';
+    g.gain.setValueAtTime(0.08,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.05);
+    o.connect(g);g.connect(master);o.start();o.stop(ctx.currentTime+0.08);
+    setTimeout(raindrop,80+Math.random()*180);
+  }
+  raindrop();isActive=true;
+}
+const btn=document.createElement('button');
+btn.innerHTML='🔊';
+btn.style.cssText='position:fixed;bottom:24px;right:24px;z-index:999;width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:20px;cursor:pointer;backdrop-filter:blur(8px);transition:all .3s';
+btn.onmouseover=()=>btn.style.background='rgba(255,255,255,0.25)';
+btn.onmouseout=()=>btn.style.background='rgba(255,255,255,0.15)';
+document.body.appendChild(btn);
+btn.onclick=()=>{if(!ctx)initAudio();else{isActive=!isActive;master.gain.value=isActive?0.15:0;btn.style.opacity=isActive?'1':'0.5';}};
+document.addEventListener('click',()=>{if(!ctx)initAudio();},{ once:true });
 </script>
 </body>
 </html>
