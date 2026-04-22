@@ -21,15 +21,38 @@ const C = document.getElementById('c');
 const ctx = C.getContext('2d');
 let W, H, S;
 
+// ── A4 纸张区域（210:297 比例，居中）──
+let PX, PY, PW, PH; // 纸张左上角 x,y 和宽高
+
+function calcPaper() {
+  const A4_RATIO = 297 / 210; // ≈1.414
+  const pad = 24; // 屏幕边距
+  const maxW = W - pad * 2;
+  const maxH = H - pad * 2;
+  if (maxW / maxH < 1 / A4_RATIO) {
+    // 宽度受限
+    PW = maxW;
+    PH = PW * A4_RATIO;
+  } else {
+    // 高度受限
+    PH = maxH;
+    PW = PH / A4_RATIO;
+  }
+  PX = (W - PW) / 2;
+  PY = (H - PH) / 2;
+}
+
 function resize() {
   W = C.width = innerWidth;
   H = C.height = innerHeight;
-  S = Math.min(W, H);
+  S = Math.min(PW || W, PH || H);
+  calcPaper();
+  S = Math.min(PW, PH);
   rebuildLayout();
-  // 重置鱼位置
-  FISH[0].x = W * 0.3; FISH[0].y = H * 0.55;
-  FISH[1].x = W * 0.7; FISH[1].y = H * 0.5;
-  FISH[2].x = W * 0.5; FISH[2].y = H * 0.45;
+  // 重置鱼到纸张内
+  FISH[0].x = PX + PW * 0.3; FISH[0].y = PY + PH * 0.55;
+  FISH[1].x = PX + PW * 0.65; FISH[1].y = PY + PH * 0.5;
+  FISH[2].x = PX + PW * 0.5; FISH[2].y = PY + PH * 0.45;
 }
 
 // ── 时间 & 阶段 ──
@@ -49,10 +72,10 @@ const TEXTS = [
 const charSets = [[], [], []];
 
 function rebuildLayout() {
-  const marginX = W * 0.15;
-  const fontSize = S * 0.028;
+  const marginX = PX + PW * 0.12; // 纸张内左边距
+  const fontSize = PW * 0.038;
   const LH = fontSize * 1.65;
-  const startY = H * 0.09;
+  const startY = PY + PH * 0.06;
   const charW = fontSize * 0.95; // 中文等宽近似
 
   for (let t = 0; t < 3; t++) {
@@ -97,8 +120,10 @@ class Fish {
     this.wanderTimer--;
     if (this.wanderTimer <= 0) {
       this.wanderTimer = 80 + Math.random() * 160;
-      this.wanderX = W * (0.18 + Math.random() * 0.64);
-      this.wanderY = H * (0.12 + Math.random() * 0.72);
+      // 鱼只在纸张范围内游动
+      const margin = this.size * 2;
+      this.wanderX = PX + margin + Math.random() * (PW - margin * 2);
+      this.wanderY = PY + margin + Math.random() * (PH - margin * 2);
     }
     const dx = this.wanderX - this.x;
     const dy = this.wanderY - this.y;
@@ -108,9 +133,12 @@ class Fish {
     this.vy *= 0.982;
     this.x += this.vx;
     this.y += this.vy;
-    // 限制在屏幕内
-    this.x = Math.max(30, Math.min(W - 30, this.x));
-    this.y = Math.max(30, Math.min(H - 30, this.y));
+    // 限制在纸张内（碰壁反弹）
+    const m = this.size * 1.5;
+    if (this.x < PX + m) { this.x = PX + m; this.vx *= -0.5; }
+    if (this.x > PX + PW - m) { this.x = PX + PW - m; this.vx *= -0.5; }
+    if (this.y < PY + m) { this.y = PY + m; this.vy *= -0.5; }
+    if (this.y > PY + PH - m) { this.y = PY + PH - m; this.vy *= -0.5; }
 
     const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
     if (spd > 0.15) {
@@ -237,31 +265,51 @@ function addRipple(x, y) {
   RIPPLES.push({ x, y, r: 0, life: 1 });
 }
 
-// ── 笔记本背景 ──
+// ── A4纸张绘制 ──
+function drawA4Paper() {
+  // 纸张阴影
+  ctx.shadowColor = 'rgba(0,0,0,0.12)';
+  ctx.shadowBlur = 20;
+  ctx.shadowOffsetX = 4;
+  ctx.shadowOffsetY = 4;
+  ctx.fillStyle = '#faf8f3';
+  ctx.fillRect(PX, PY, PW, PH);
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 0;
+
+  // 纸张纹理
+  ctx.globalAlpha = 0.015;
+  for (let i = 0; i < 120; i++) {
+    ctx.fillStyle = i % 3 === 0 ? '#c8c0b0' : '#ddd4c4';
+    const tx = PX + ((i * 97 + time * 0.06) % PW);
+    const ty = PY + ((i * 157) % PH);
+    ctx.fillRect(tx, ty, 1.5, 1);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── 笔记本横线（限制在纸张内）──
 function drawNotebook() {
-  const lineH = S * 0.035;
-  const startY = H * 0.08;
+  const lineH = PW * 0.05;
+  const startY = PY + PH * 0.06;
+  const marginLeft = PX + PW * 0.05;
+  const marginRight = PX + PW * 0.95;
   ctx.strokeStyle = 'rgba(160,190,220,0.22)';
   ctx.lineWidth = 0.5;
   ctx.beginPath();
-  for (let y = startY; y < H * 0.95; y += lineH) {
-    ctx.moveTo(W * 0.05, y); ctx.lineTo(W * 0.95, y);
+  for (let y = startY; y < PY + PH * 0.95; y += lineH) {
+    ctx.moveTo(marginLeft, y); ctx.lineTo(marginRight, y);
   }
   ctx.stroke();
+  // 红色竖线（页边距）
   ctx.strokeStyle = 'rgba(200,100,100,0.25)';
   ctx.lineWidth = 0.7;
   ctx.beginPath();
-  ctx.moveTo(W * 0.12, H * 0.03); ctx.lineTo(W * 0.12, H * 0.97);
+  ctx.moveTo(PX + PW * 0.1, PY + PH * 0.03);
+  ctx.lineTo(PX + PW * 0.1, PY + PH * 0.97);
   ctx.stroke();
-}
-
-function drawPaper() {
-  ctx.globalAlpha = 0.012;
-  for (let i = 0; i < 150; i++) {
-    ctx.fillStyle = i % 3 === 0 ? '#c8c0b0' : '#ddd4c4';
-    ctx.fillRect((i * 97 + time * 0.06) % W, (i * 157) % H, 1.5, 1);
-  }
-  ctx.globalAlpha = 1;
 }
 
 // ── 物理 ──
@@ -311,7 +359,7 @@ function stepChars(chars) {
 // ── 绘制字符（逐字出现）──
 function drawChars(chars, alpha, style) {
   if (alpha < 0.01) return;
-  const fontSize = S * 0.028;
+  const fontSize = PW * 0.038;
   const phaseT = cycleFrame % (PHASE_DUR + TRANS);
   const total = Math.floor(phaseT * 0.5);
 
@@ -415,10 +463,10 @@ function draw() {
   const wR = phaseSmooth > 2 ? phaseSmooth - 2 : 0;
   const w1e = Math.min(1, w1 + wR);
 
-  // 更新鱼尺寸
-  FISH[0].size = S * 0.032;
-  FISH[1].size = S * 0.028;
-  FISH[2].size = S * 0.022;
+  // 更新鱼尺寸（基于纸张宽度）
+  FISH[0].size = PW * 0.04;
+  FISH[1].size = PW * 0.035;
+  FISH[2].size = PW * 0.028;
 
   // 更新所有鱼（始终运行物理）
   FISH.forEach(f => f.update());
@@ -436,10 +484,17 @@ function draw() {
   if (w3 > 0.1) { fishRepel(charSets[2], FISH[2], 1.4); rippleEffect(charSets[2]); stepChars(charSets[2]); }
 
   // ── 绘制 ──
-  ctx.fillStyle = '#f5f2eb';
+  // 屏幕底色（纸张外）
+  ctx.fillStyle = '#e8e4dc';
   ctx.fillRect(0, 0, W, H);
-  drawPaper();
+  // A4纸张
+  drawA4Paper();
   drawNotebook();
+  // 裁剪到纸张范围（波纹/文字/鱼不溢出）
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PX, PY, PW, PH);
+  ctx.clip();
 
   // 水波纹
   for (let i = RIPPLES.length - 1; i >= 0; i--) {
@@ -457,24 +512,24 @@ function draw() {
   // Phase 1
   if (w1e > 0.01) {
     drawChars(charSets[0], w1e, 0);
-    drawBubble(W * 0.25, H * 0.78, S * 0.07, w1e * 0.5);
+    drawBubble(PX + PW * 0.22, PY + PH * 0.78, PW * 0.08, w1e * 0.5);
     FISH[0].draw(w1e);
   }
   // Phase 2
   if (w2 > 0.01) {
     drawChars(charSets[1], w2, 1);
-    drawDoodles(W * 0.72, H * 0.62, S * 0.1, w2);
+    drawDoodles(PX + PW * 0.72, PY + PH * 0.62, PW * 0.12, w2);
     FISH[1].draw(w2);
   }
   // Phase 3
   if (w3 > 0.01) {
     drawChars(charSets[2], w3, 2);
-    drawOrganic(W * 0.65, H * 0.55, S * 0.15, w3);
+    drawOrganic(PX + PW * 0.65, PY + PH * 0.55, PW * 0.18, w3);
     FISH[2].draw(w3);
   }
 
   // 墨滴
-  if (Math.random() < 0.006) INKDROPS.push({ x: W * (0.2 + Math.random() * 0.6), y: H * (0.15 + Math.random() * 0.7), r: 0, max: 1.5 + Math.random() * 2.5, life: 1 });
+  if (Math.random() < 0.006) INKDROPS.push({ x: PX + PW * (0.15 + Math.random() * 0.7), y: PY + PH * (0.1 + Math.random() * 0.75), r: 0, max: 1.5 + Math.random() * 2.5, life: 1 });
   for (let i = INKDROPS.length - 1; i >= 0; i--) {
     const d = INKDROPS[i]; d.r = Math.min(d.max, d.r + 0.1); d.life -= 0.005;
     if (d.life <= 0) { INKDROPS.splice(i, 1); continue; }
@@ -482,11 +537,15 @@ function draw() {
     ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
   }
 
-  // 阶段指示
+  // 解除裁剪
+  ctx.restore();
+
+  // 阶段指示（纸张底部下方）
+  const dotY = PY + PH + 14;
   for (let i = 0; i < 3; i++) {
     const act = Math.round(phaseSmooth) === i || (phaseSmooth > 2.5 && i === 0);
     ctx.fillStyle = act ? 'rgba(40,60,120,0.6)' : 'rgba(160,170,190,0.3)';
-    ctx.beginPath(); ctx.arc(W / 2 + (i - 1) * 16, H * 0.96, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(W / 2 + (i - 1) * 16, dotY, 3, 0, Math.PI * 2); ctx.fill();
   }
 }
 
