@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>江南可采莲 · 莫奈印象</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    background: #0a1628;
+    overflow: hidden;
+    font-family: 'STKaiti', 'KaiTi', serif;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+
+  /* 诗词叠加层 */
+  #poem-overlay {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .poem-line {
+    display: block;
+    font-size: clamp(18px, 3vw, 32px);
+    color: rgba(255, 240, 200, 0);
+    text-shadow: 0 0 30px rgba(255, 220, 150, 0.8),
+                 0 0 60px rgba(255, 180, 80, 0.5);
+    letter-spacing: 0.25em;
+    line-height: 2.2;
+    transition: color 2s ease;
+    font-weight: normal;
+  }
+
+  .poem-line.visible {
+    color: rgba(255, 240, 200, 0.92);
+  }
+
+  #title-overlay {
+    position: fixed;
+    top: 6%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 3s ease;
+  }
+
+  #title-overlay.visible { opacity: 1; }
+
+  #title-overlay h1 {
+    font-size: clamp(14px, 2.5vw, 28px);
+    color: rgba(255, 240, 200, 0.7);
+    letter-spacing: 0.5em;
+    font-weight: normal;
+    text-shadow: 0 0 20px rgba(255, 200, 100, 0.6);
+  }
+
+  #title-overlay p {
+    font-size: clamp(10px, 1.5vw, 16px);
+    color: rgba(200, 220, 255, 0.5);
+    letter-spacing: 0.3em;
+    margin-top: 6px;
+    font-family: 'Georgia', serif;
+  }
+
+  /* 莫奈签名风格 */
+  #monet-sig {
+    position: fixed;
+    bottom: 4%;
+    right: 4%;
+    z-index: 10;
+    opacity: 0;
+    transition: opacity 3s ease;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-style: italic;
+    color: rgba(200, 180, 150, 0.5);
+    font-size: clamp(10px, 1.5vw, 16px);
+    pointer-events: none;
+  }
+
+  #monet-sig.visible { opacity: 1; }
+
+  /* 涟漪提示 */
+  #hint {
+    position: fixed;
+    bottom: 5%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    color: rgba(200, 230, 255, 0.4);
+    font-size: clamp(10px, 1.5vw, 14px);
+    letter-spacing: 0.2em;
+    font-family: 'Georgia', serif;
+    animation: hintPulse 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  @keyframes hintPulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 0.7; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="lotusCanvas"></canvas>
+
+<div id="title-overlay">
+  <h1>江南可采莲</h1>
+  <p>Nymphéas · Claude Monet · 汉乐府</p>
+</div>
+
+<div id="poem-overlay">
+  <span class="poem-line" data-index="0">江南可采莲</span>
+  <span class="poem-line" data-index="1">莲叶何田田</span>
+  <span class="poem-line" data-index="2">鱼戏莲叶间</span>
+  <span class="poem-line" data-index="3">鱼戏莲叶东</span>
+  <span class="poem-line" data-index="4">鱼戏莲叶西</span>
+</div>
+
+<div id="monet-sig">Claude Monet, Nymphéas</div>
+<div id="hint">点击水面 · 感受涟漪</div>
+
+<script>
+const canvas = document.getElementById('lotusCanvas');
+const ctx = canvas.getContext('2d');
+
+let W, H, time = 0;
+let mouseX = -1000, mouseY = -1000;
+const ripples = [];
+const fish = [];
+const lotusLeaves = [];
+const lotusFlowers = [];
+const petals = []; // 飘落花瓣
+
+// ─── 莫奈调色板 ───────────────────────────────────────────
+const MONET = {
+  water: [
+    [28, 58, 110],    // 深邃蓝
+    [15, 80, 140],    // 莫奈蓝
+    [60, 110, 160],   // 天空倒影
+    [100, 160, 180],  // 浅水青
+    [45, 90, 130],    // 中蓝
+  ],
+  light: [
+    [255, 240, 180],  // 晨光金
+    [255, 210, 120],  // 暖橘
+    [220, 240, 255],  // 天光白
+    [255, 255, 210],  // 柔白
+  ],
+  leaf: [
+    [60, 110, 50],    // 深绿
+    [80, 145, 65],    // 中绿
+    [120, 170, 80],   // 亮绿
+    [40, 90, 60],     // 暗绿
+    [100, 150, 90],   // 莫奈绿
+  ],
+  flower: [
+    [255, 200, 210],  // 粉白
+    [255, 180, 190],  // 浅粉
+    [240, 160, 180],  // 玫粉
+    [255, 240, 245],  // 珍珠白
+    [255, 220, 230],  // 奶粉
+  ],
+  fishColor: [
+    [255, 150, 60],   // 锦鲤橙
+    [255, 100, 100],  // 红鲤
+    [255, 200, 80],   // 金鲤
+    [200, 230, 255],  // 银鲤
+  ]
+};
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  initScene();
+}
+
+// ─── 噪声函数（模拟印象派笔触）──────────────────────────────
+function noise(x, y, t) {
+  return Math.sin(x * 0.015 + t * 0.3) * Math.cos(y * 0.012 - t * 0.2)
+       + Math.sin(x * 0.03 + y * 0.02 + t * 0.5) * 0.5
+       + Math.cos(x * 0.008 - y * 0.018 + t * 0.15) * 0.3
+       + Math.sin((x + y) * 0.01 + t * 0.4) * 0.2;
+}
+
+// ─── 初始化场景 ───────────────────────────────────────────
+function initScene() {
+  // 莲叶
+  lotusLeaves.length = 0;
+  const leafCount = Math.floor((W * H) / 28000) + 12;
+  for (let i = 0; i < leafCount; i++) {
+    addLotusLeaf(
+      Math.random() * W,
+      Math.random() * H,
+      Math.random() * 60 + 40,
+      true
+    );
+  }
+
+  // 莲花
+  lotusFlowers.length = 0;
+  const flowerCount = Math.floor(leafCount * 0.45);
+  for (let i = 0; i < flowerCount; i++) {
+    const leaf = lotusLeaves[Math.floor(Math.random() * lotusLeaves.length)];
+    lotusFlowers.push({
+      x: leaf.x + (Math.random() - 0.5) * 40,
+      y: leaf.y + (Math.random() - 0.5) * 40,
+      r: Math.random() * 18 + 12,
+      phase: Math.random() * Math.PI * 2,
+      colorIdx: Math.floor(Math.random() * MONET.flower.length),
+      openness: Math.random() * 0.5 + 0.5,
+      petalCount: Math.floor(Math.random() * 4) + 8,
+      rotation: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // 鱼群
+  fish.length = 0;
+  const fishCount = 6 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < fishCount; i++) {
+    addFish(Math.random() * W, Math.random() * H);
+  }
+}
+
+function addLotusLeaf(x, y, r, initial) {
+  lotusLeaves.push({
+    x, y,
+    r: r || Math.random() * 60 + 35,
+    rotation: Math.random() * Math.PI * 2,
+    rotSpeed: (Math.random() - 0.5) * 0.003,
+    colorIdx: Math.floor(Math.random() * MONET.leaf.length),
+    phase: Math.random() * Math.PI * 2,
+    wobble: Math.random() * 0.5 + 0.3,
+    notchAngle: Math.random() * Math.PI * 2,
+    opacity: initial ? Math.random() * 0.4 + 0.6 : 0,
+    targetOpacity: Math.random() * 0.4 + 0.6,
+  });
+}
+
+function addFish(x, y) {
+  const dir = Math.random() * Math.PI * 2;
+  fish.push({
+    x, y,
+    vx: Math.cos(dir) * (Math.random() * 1.5 + 0.5),
+    vy: Math.sin(dir) * (Math.random() * 1.5 + 0.5),
+    size: Math.random() * 18 + 12,
+    colorIdx: Math.floor(Math.random() * MONET.fishColor.length),
+    phase: Math.random() * Math.PI * 2,
+    tail: [],  // 尾迹
+    turnTimer: Math.random() * 200,
+    depth: Math.random() * 0.6 + 0.2, // 鱼的深度（影响透明度）
+    targetX: Math.random() * W,
+    targetY: Math.random() * H,
+  });
+}
+
+// ─── 涟漪 ────────────────────────────────────────────────
+function addRipple(x, y, strong) {
+  ripples.push({
+    x, y,
+    r: 0,
+    maxR: strong ? Math.random() * 120 + 80 : Math.random() * 60 + 30,
+    speed: strong ? 2.5 : 1.5,
+    opacity: strong ? 0.7 : 0.5,
+    lineWidth: strong ? 2.5 : 1.5,
+    color: strong ? [255, 220, 150] : [150, 200, 255],
+  });
+}
+
+// ─── 飘落花瓣 ──────────────────────────────────────────
+function addPetal(x, y) {
+  petals.push({
+    x: x || Math.random() * W,
+    y: y || -20,
+    vx: (Math.random() - 0.5) * 1.5,
+    vy: Math.random() * 0.8 + 0.3,
+    r: Math.random() * 8 + 4,
+    rotation: Math.random() * Math.PI * 2,
+    rotSpeed: (Math.random() - 0.5) * 0.05,
+    opacity: Math.random() * 0.5 + 0.4,
+    colorIdx: Math.floor(Math.random() * MONET.flower.length),
+    wobble: Math.random() * Math.PI * 2,
+    wobbleSpeed: Math.random() * 0.05 + 0.02,
+    life: 1,
+  });
+}
+
+// ─── 绘制水面（莫奈笔触）────────────────────────────────
+function drawWater() {
+  // 基底渐变
+  const gradient = ctx.createLinearGradient(0, 0, 0, H);
+  gradient.addColorStop(0, `rgb(${MONET.water[2].join(',')})`);
+  gradient.addColorStop(0.3, `rgb(${MONET.water[0].join(',')})`);
+  gradient.addColorStop(0.7, `rgb(${MONET.water[1].join(',')})`);
+  gradient.addColorStop(1, `rgb(${MONET.water[4].join(',')})`);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+
+  // 莫奈笔触：横向短线条模拟水波纹和倒影
+  const strokeCount = Math.floor(H / 4);
+  for (let i = 0; i < strokeCount; i++) {
+    const y = i * 4;
+    const n = noise(0, y, time);
+    const n2 = noise(100, y, time * 1.3);
+
+    // 水波颜色混合
+    const t1 = (Math.sin(n * 2 + time * 0.3) + 1) * 0.5;
+    const wc = MONET.water[Math.floor(t1 * (MONET.water.length - 1))];
+    const lc = MONET.light[Math.floor(Math.abs(n2) * MONET.light.length) % MONET.light.length];
+
+    const alpha = Math.abs(n) * 0.08 + 0.03;
+    const strokeLen = Math.abs(n2) * 80 + 20;
+    const xStart = ((n + 1) * 0.5 * W + time * 20) % W;
+
+    // 混色笔触
+    ctx.strokeStyle = `rgba(${lc[0]},${lc[1]},${lc[2]},${alpha})`;
+    ctx.lineWidth = Math.random() * 2 + 1;
+    ctx.beginPath();
+    ctx.moveTo(xStart, y + n * 3);
+    ctx.quadraticCurveTo(
+      xStart + strokeLen * 0.5,
+      y + n2 * 4,
+      xStart + strokeLen,
+      y + n * 2
+    );
+    ctx.stroke();
+  }
+
+  // 光斑（晨光水面反射）
+  for (let i = 0; i < 15; i++) {
+    const lx = (Math.sin(time * 0.2 + i * 1.3) * 0.4 + 0.5) * W;
+    const ly = (Math.cos(time * 0.15 + i * 0.9) * 0.3 + 0.4) * H;
+    const lr = Math.abs(Math.sin(time * 0.3 + i)) * 60 + 20;
+    const lg = ctx.createRadialGradient(lx, ly, 0, lx, ly, lr);
+    const lc = MONET.light[i % MONET.light.length];
+    lg.addColorStop(0, `rgba(${lc[0]},${lc[1]},${lc[2]},0.08)`);
+    lg.addColorStop(1, 'transparent');
+    ctx.fillStyle = lg;
+    ctx.beginPath();
+    ctx.ellipse(lx, ly, lr * 1.5, lr * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ─── 绘制莲叶（莫奈风格）───────────────────────────────
+function drawLotusLeaf(leaf) {
+  const { x, y, r, rotation, colorIdx, phase, wobble, notchAngle, opacity } = leaf;
+  const n = noise(x * 0.01, y * 0.01, time) * 0.5;
+  const wobbleR = r + Math.sin(time * 0.8 + phase) * wobble * r * 0.06;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rotation + n * 0.15);
+  ctx.globalAlpha = opacity;
+
+  // 莲叶主体：多层笔触营造印象派质感
+  const lc = MONET.leaf[colorIdx];
+  const lc2 = MONET.leaf[(colorIdx + 1) % MONET.leaf.length];
+
+  // 阴影/深度
+  ctx.shadowBlur = 20;
+  ctx.shadowColor = `rgba(0,30,10,0.5)`;
+
+  // 莲叶路径（带缺口的圆形）
+  function drawLeafPath(rr) {
+    ctx.beginPath();
+    const notch = notchAngle - rotation;
+    const notchSize = 0.4;
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, rr, notch + notchSize, notch + Math.PI * 2 - notchSize);
+    ctx.closePath();
+  }
+
+  // 底色
+  const leafGrad = ctx.createRadialGradient(-r * 0.2, -r * 0.2, 0, 0, 0, wobbleR);
+  leafGrad.addColorStop(0, `rgba(${lc2[0]},${lc2[1]},${lc2[2]},0.95)`);
+  leafGrad.addColorStop(0.6, `rgba(${lc[0]},${lc[1]},${lc[2]},0.88)`);
+  leafGrad.addColorStop(1, `rgba(${Math.max(0,lc[0]-30)},${Math.max(0,lc[1]-20)},${Math.max(0,lc[2]-10)},0.7)`);
+  ctx.fillStyle = leafGrad;
+  drawLeafPath(wobbleR);
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // 莫奈笔触：叶脉纹理
+  const veins = 8;
+  for (let v = 0; v < veins; v++) {
+    const angle = (v / veins) * Math.PI * 2;
+    const vLen = wobbleR * (0.6 + Math.random() * 0.3);
+    ctx.strokeStyle = `rgba(${lc2[0]+20},${lc2[1]+25},${lc2[2]+10},0.35)`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(
+      Math.cos(angle + 0.2) * vLen * 0.5,
+      Math.sin(angle + 0.2) * vLen * 0.5,
+      Math.cos(angle) * vLen,
+      Math.sin(angle) * vLen
+    );
+    ctx.stroke();
+  }
+
+  // 叶面光泽（短笔触）
+  for (let s = 0; s < 8; s++) {
+    const sa = Math.random() * Math.PI * 2;
+    const sr = Math.random() * wobbleR * 0.8;
+    const sl = Math.random() * wobbleR * 0.3 + 5;
+    ctx.strokeStyle = `rgba(200,230,180,0.15)`;
+    ctx.lineWidth = Math.random() * 2 + 0.5;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(sa) * sr, Math.sin(sa) * sr);
+    ctx.lineTo(Math.cos(sa + 0.3) * (sr + sl), Math.sin(sa + 0.3) * (sr + sl));
+    ctx.stroke();
+  }
+
+  // 边缘加深
+  ctx.strokeStyle = `rgba(${Math.max(0,lc[0]-20)},${Math.max(0,lc[1]-10)},${Math.max(0,lc[2])},0.4)`;
+  ctx.lineWidth = 1.5;
+  drawLeafPath(wobbleR);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ─── 绘制莲花 ────────────────────────────────────────────
+function drawLotusFlower(flower) {
+  const { x, y, r, phase, colorIdx, openness, petalCount, rotation } = flower;
+  const n = noise(x * 0.01, y * 0.01, time);
+  const pulse = 1 + Math.sin(time * 0.5 + phase) * 0.03;
+
+  ctx.save();
+  ctx.translate(x, y + Math.sin(time * 0.4 + phase) * 1.5);
+  ctx.rotate(rotation + n * 0.1);
+
+  const fc = MONET.flower[colorIdx];
+  const fc2 = MONET.flower[(colorIdx + 1) % MONET.flower.length];
+
+  // 花朵阴影
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = `rgba(100,50,80,0.4)`;
+
+  // 外层花瓣（多层印象派笔触）
+  for (let layer = 2; layer >= 0; layer--) {
+    const layerR = r * pulse * (0.7 + layer * 0.15);
+    const layerOpen = openness * (1 - layer * 0.1);
+    const alpha = 0.6 + layer * 0.15;
+
+    for (let p = 0; p < petalCount; p++) {
+      const angle = (p / petalCount) * Math.PI * 2 + layer * 0.3;
+      const px = Math.cos(angle) * layerR * layerOpen * 0.7;
+      const py = Math.sin(angle) * layerR * layerOpen * 0.7;
+
+      const petalGrad = ctx.createRadialGradient(
+        px * 0.3, py * 0.3, 0,
+        px, py, layerR * 0.5
+      );
+      const col = layer % 2 === 0 ? fc : fc2;
+      petalGrad.addColorStop(0, `rgba(255,255,255,${alpha * 0.8})`);
+      petalGrad.addColorStop(0.4, `rgba(${col[0]},${col[1]},${col[2]},${alpha})`);
+      petalGrad.addColorStop(1, `rgba(${Math.max(0,col[0]-40)},${Math.max(0,col[1]-30)},${Math.max(0,col[2]-20)},${alpha * 0.6})`);
+
+      ctx.fillStyle = petalGrad;
+      ctx.beginPath();
+      ctx.ellipse(px, py, layerR * 0.28, layerR * 0.42, angle, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 花瓣笔触纹理
+      ctx.strokeStyle = `rgba(${col[0]-20},${col[1]-15},${col[2]-10},0.25)`;
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+    }
+  }
+
+  ctx.shadowBlur = 0;
+
+  // 花蕊
+  const stamenGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.35);
+  stamenGrad.addColorStop(0, `rgba(255, 240, 100, 0.95)`);
+  stamenGrad.addColorStop(0.5, `rgba(255, 200, 60, 0.85)`);
+  stamenGrad.addColorStop(1, `rgba(200, 140, 40, 0.7)`);
+  ctx.fillStyle = stamenGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 0.3 * pulse, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 花蕊点状纹理
+  for (let s = 0; s < 12; s++) {
+    const sa = (s / 12) * Math.PI * 2;
+    const sr = Math.random() * r * 0.22;
+    ctx.fillStyle = `rgba(180, 120, 20, 0.5)`;
+    ctx.beginPath();
+    ctx.arc(Math.cos(sa) * sr, Math.sin(sa) * sr, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// ─── 绘制鱼 ──────────────────────────────────────────────
+function drawFish(f) {
+  const speed = Math.sqrt(f.vx * f.vx + f.vy * f.vy);
+  const angle = Math.atan2(f.vy, f.vx);
+  const tailWag = Math.sin(time * 4 + f.phase) * 0.4;
+
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(angle);
+  ctx.globalAlpha = f.depth * 0.7 + 0.1;
+
+  const fc = MONET.fishColor[f.colorIdx];
+  const sz = f.size;
+
+  // 鱼身（印象派色块）
+  const fishGrad = ctx.createLinearGradient(-sz, 0, sz * 0.5, 0);
+  fishGrad.addColorStop(0, `rgba(${fc[0]},${fc[1]},${fc[2]},0.9)`);
+  fishGrad.addColorStop(0.4, `rgba(${Math.min(255,fc[0]+40)},${Math.min(255,fc[1]+30)},${fc[2]},0.95)`);
+  fishGrad.addColorStop(1, `rgba(${Math.max(0,fc[0]-30)},${Math.max(0,fc[1]-20)},${fc[2]},0.6)`);
+
+  ctx.fillStyle = fishGrad;
+  ctx.beginPath();
+  ctx.moveTo(sz * 0.8, 0);
+  ctx.quadraticCurveTo(sz * 0.3, -sz * 0.35, -sz * 0.5, -sz * 0.12);
+  ctx.quadraticCurveTo(-sz * 0.8, 0, -sz * 0.5, sz * 0.12);
+  ctx.quadraticCurveTo(sz * 0.3, sz * 0.35, sz * 0.8, 0);
+  ctx.fill();
+
+  // 鱼尾
+  ctx.fillStyle = `rgba(${fc[0]},${Math.max(0,fc[1]-30)},${Math.max(0,fc[2]-20)},0.7)`;
+  ctx.beginPath();
+  ctx.moveTo(-sz * 0.5, 0);
+  ctx.lineTo(-sz * 1.1, -sz * 0.5 + tailWag * sz);
+  ctx.lineTo(-sz * 0.9, 0);
+  ctx.lineTo(-sz * 1.1, sz * 0.5 + tailWag * sz);
+  ctx.closePath();
+  ctx.fill();
+
+  // 鱼眼
+  ctx.fillStyle = 'rgba(20,20,30,0.85)';
+  ctx.beginPath();
+  ctx.arc(sz * 0.45, -sz * 0.1, sz * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.beginPath();
+  ctx.arc(sz * 0.47, -sz * 0.12, sz * 0.04, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 鳞纹（印象派短笔触）
+  for (let i = 0; i < 5; i++) {
+    const sx = sz * (0.3 - i * 0.18);
+    ctx.strokeStyle = `rgba(255,255,200,0.2)`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.arc(sx, 0, sz * 0.15, -Math.PI * 0.7, Math.PI * 0.7);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // 鱼游动产生的微弱涟漪（偶尔）
+  if (Math.random() < 0.008) {
+    addRipple(f.x, f.y, false);
+  }
+}
+
+// ─── 绘制花瓣 ─────────────────────────────────────────
+function drawPetal(p) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.rotation);
+  ctx.globalAlpha = p.opacity * p.life;
+  const pc = MONET.flower[p.colorIdx];
+  const pg = ctx.createRadialGradient(0, 0, 0, 0, 0, p.r);
+  pg.addColorStop(0, `rgba(255,255,255,0.9)`);
+  pg.addColorStop(0.5, `rgba(${pc[0]},${pc[1]},${pc[2]},0.8)`);
+  pg.addColorStop(1, `rgba(${Math.max(0,pc[0]-30)},${Math.max(0,pc[1]-30)},${Math.max(0,pc[2]-20)},0.4)`);
+  ctx.fillStyle = pg;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, p.r, p.r * 1.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─── 涟漪绘制 ─────────────────────────────────────────
+function drawRipple(r) {
+  const alpha = r.opacity * (1 - r.r / r.maxR);
+  if (alpha <= 0) return;
+  ctx.strokeStyle = `rgba(${r.color[0]},${r.color[1]},${r.color[2]},${alpha})`;
+  ctx.lineWidth = r.lineWidth * (1 - r.r / r.maxR * 0.5);
+  ctx.beginPath();
+  ctx.ellipse(r.x, r.y, r.r, r.r * 0.35, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 二次涟漪
+  if (r.r > r.maxR * 0.4) {
+    ctx.strokeStyle = `rgba(${r.color[0]},${r.color[1]},${r.color[2]},${alpha * 0.4})`;
+    ctx.lineWidth = r.lineWidth * 0.5;
+    ctx.beginPath();
+    ctx.ellipse(r.x, r.y, r.r * 0.65, r.r * 0.22, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+// ─── 鱼群AI运动 ──────────────────────────────────────
+function updateFish(f) {
+  f.turnTimer--;
+  if (f.turnTimer <= 0) {
+    f.turnTimer = Math.random() * 150 + 80;
+    f.targetX = Math.random() * W * 0.85 + W * 0.075;
+    f.targetY = Math.random() * H * 0.85 + H * 0.075;
+  }
+
+  // 向目标靠近
+  const dx = f.targetX - f.x;
+  const dy = f.targetY - f.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist > 5) {
+    const force = 0.025;
+    f.vx += (dx / dist) * force;
+    f.vy += (dy / dist) * force;
+  }
+
+  // 鼠标逃跑
+  const mdx = f.x - mouseX;
+  const mdy = f.y - mouseY;
+  const mdist = Math.sqrt(mdx * mdx + mdy * mdy);
+  if (mdist < 120) {
+    const flee = 0.3 * (1 - mdist / 120);
+    f.vx += (mdx / mdist) * flee;
+    f.vy += (mdy / mdist) * flee;
+  }
+
+  // 速度限制
+  const spd = Math.sqrt(f.vx * f.vx + f.vy * f.vy);
+  const maxSpd = 2.2;
+  if (spd > maxSpd) {
+    f.vx = (f.vx / spd) * maxSpd;
+    f.vy = (f.vy / spd) * maxSpd;
+  }
+
+  // 边界反弹
+  const margin = 60;
+  if (f.x < margin) f.vx += 0.15;
+  if (f.x > W - margin) f.vx -= 0.15;
+  if (f.y < margin) f.vy += 0.15;
+  if (f.y > H - margin) f.vy -= 0.15;
+
+  f.x += f.vx * 0.9;
+  f.y += f.vy * 0.9;
+}
+
+// ─── 后期处理：莫奈朦胧感 ──────────────────────────────
+function postProcess() {
+  // 周边暗角
+  const vignette = ctx.createRadialGradient(W/2, H/2, H*0.3, W/2, H/2, H*0.85);
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(0.7, 'rgba(0,10,20,0.1)');
+  vignette.addColorStop(1, 'rgba(0,10,30,0.6)');
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, W, H);
+
+  // 整体蓝绿色调（水面氛围）
+  ctx.fillStyle = 'rgba(10, 30, 60, 0.04)';
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ─── 诗词显示动画 ──────────────────────────────────────
+let poemTimer = 0;
+const poemLines = document.querySelectorAll('.poem-line');
+let currentPoemLine = 0;
+const poemDelay = 100; // 帧数
+
+function updatePoem() {
+  poemTimer++;
+  if (poemTimer % poemDelay === 0 && currentPoemLine < poemLines.length) {
+    poemLines[currentPoemLine].classList.add('visible');
+    currentPoemLine++;
+  }
+}
+
+// ─── 主循环 ──────────────────────────────────────────────
+let frameCount = 0;
+function animate() {
+  requestAnimationFrame(animate);
+  time += 0.008;
+  frameCount++;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // 水面
+  drawWater();
+
+  // 涟漪
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    ripples[i].r += ripples[i].speed;
+    if (ripples[i].r >= ripples[i].maxR) {
+      ripples.splice(i, 1);
+    } else {
+      drawRipple(ripples[i]);
+    }
+  }
+
+  // 莲叶（后层）
+  for (const leaf of lotusLeaves) {
+    leaf.rotation += leaf.rotSpeed;
+    if (leaf.opacity < leaf.targetOpacity) leaf.opacity = Math.min(leaf.targetOpacity, leaf.opacity + 0.005);
+    drawLotusLeaf(leaf);
+  }
+
+  // 鱼（在叶片间游动）
+  for (const f of fish) {
+    updateFish(f);
+    drawFish(f);
+  }
+
+  // 莲花（前层）
+  for (const flower of lotusFlowers) {
+    drawLotusFlower(flower);
+  }
+
+  // 飘落花瓣
+  for (let i = petals.length - 1; i >= 0; i--) {
+    const p = petals[i];
+    p.wobble += p.wobbleSpeed;
+    p.x += p.vx + Math.sin(p.wobble) * 0.5;
+    p.y += p.vy;
+    p.rotation += p.rotSpeed;
+    if (p.y > H + 20 || p.life <= 0) {
+      petals.splice(i, 1);
+    } else {
+      drawPetal(p);
+    }
+  }
+
+  // 随机飘落花瓣
+  if (frameCount % 120 === 0 && petals.length < 30) {
+    addPetal();
+  }
+
+  // 后期处理
+  postProcess();
+
+  // 诗词
+  updatePoem();
+}
+
+// ─── 事件监听 ────────────────────────────────────────────
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  addRipple(cx, cy, true);
+  // 点击产生花瓣飞溅
+  for (let i = 0; i < 5; i++) {
+    addPetal(cx + (Math.random() - 0.5) * 30, cy + (Math.random() - 0.5) * 30);
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  mouseX = e.clientX - rect.left;
+  mouseY = e.clientY - rect.top;
+
+  if (Math.random() < 0.05) {
+    addRipple(mouseX, mouseY, false);
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  mouseX = -1000;
+  mouseY = -1000;
+});
+
+// 触屏支持
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  const tx = touch.clientX - rect.left;
+  const ty = touch.clientY - rect.top;
+  addRipple(tx, ty, true);
+  for (let i = 0; i < 5; i++) {
+    addPetal(tx + (Math.random() - 0.5) * 30, ty + (Math.random() - 0.5) * 30);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  const touch = e.touches[0];
+  const rect = canvas.getBoundingClientRect();
+  mouseX = touch.clientX - rect.left;
+  mouseY = touch.clientY - rect.top;
+}, { passive: false });
+
+// 自动涟漪（营造生动感）
+setInterval(() => {
+  addRipple(
+    Math.random() * W * 0.8 + W * 0.1,
+    Math.random() * H * 0.8 + H * 0.1,
+    false
+  );
+}, 2500);
+
+// 显示标题和签名
+setTimeout(() => {
+  document.getElementById('title-overlay').classList.add('visible');
+  document.getElementById('monet-sig').classList.add('visible');
+}, 1500);
+
+// 启动
+window.addEventListener('resize', resize);
+resize();
+animate();
+</script>
+</body>
+</html>
