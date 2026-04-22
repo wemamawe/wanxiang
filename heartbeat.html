@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>心事 - Heartbeat</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        canvas {
+            border: 1px solid #0a3d62;
+            box-shadow: 0 0 30px rgba(10, 61, 98, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="520" height="700"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        
+        // 鼠标位置
+        let mouseX = width / 2;
+        let mouseY = height / 2;
+        
+        // 心跳参数
+        let baseHeartRate = 60; // 基础心率
+        let currentBPM = 60;
+        let heartbeatProgress = 0;
+        let lastBeatTime = 0;
+        
+        // 波形数据
+        let waveformData = [];
+        const waveformLength = width + 100;
+        
+        // 文字粒子
+        const textFragments = [
+            '心事重重',
+            '欲说还休',
+            '却道天凉好个秋',
+            '少年不识愁滋味',
+            '为赋新词强说愁'
+        ];
+        let particles = [];
+        
+        // 监听鼠标移动
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+        
+        // 计算基于鼠标距离中心的心率
+        function calculateBPM() {
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const distance = Math.sqrt(
+                Math.pow(mouseX - centerX, 2) + 
+                Math.pow(mouseY - centerY, 2)
+            );
+            const maxDistance = Math.sqrt(
+                Math.pow(centerX, 2) + 
+                Math.pow(centerY, 2)
+            );
+            const normalizedDistance = 1 - (distance / maxDistance);
+            
+            // 距离中心越近,心率越快 (60-120 BPM)
+            return 60 + normalizedDistance * 60;
+        }
+        
+        // 生成心电图QRS波形
+        function generateQRSWave(x, amplitude) {
+            const waves = [];
+            // P波 (小的圆润波)
+            waves.push({ x: x - 40, y: -amplitude * 0.15 });
+            // Q波 (下降)
+            waves.push({ x: x - 15, y: amplitude * 0.1 });
+            // R波 (尖峰)
+            waves.push({ x: x, y: -amplitude * 1.0 });
+            // S波 (下降)
+            waves.push({ x: x + 15, y: amplitude * 0.2 });
+            // T波 (圆润波)
+            waves.push({ x: x + 50, y: -amplitude * 0.2 });
+            
+            return waves;
+        }
+        
+        // 创建文字粒子爆炸
+        function createTextExplosion(x, y) {
+            const text = textFragments[Math.floor(Math.random() * textFragments.length)];
+            const chars = text.split('');
+            
+            chars.forEach((char, i) => {
+                const angle = (Math.PI * 2 / chars.length) * i + Math.random() * 0.5;
+                const speed = 1 + Math.random() * 2;
+                
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    char: char,
+                    life: 1.0,
+                    size: 14 + Math.random() * 10
+                });
+            });
+        }
+        
+        // 绘制网格背景
+        function drawGrid() {
+            ctx.strokeStyle = 'rgba(10, 61, 98, 0.15)';
+            ctx.lineWidth = 1;
+            
+            // 垂直线
+            for (let x = 0; x < width; x += 20) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            
+            // 水平线
+            for (let y = 0; y < height; y += 20) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            
+            // 加粗线
+            ctx.strokeStyle = 'rgba(10, 61, 98, 0.3)';
+            ctx.lineWidth = 1.5;
+            for (let x = 0; x < width; x += 100) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < height; y += 100) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+        }
+        
+        // 绘制心电图波形
+        function drawWaveform() {
+            const centerY = height / 2;
+            
+            // 绘制拖尾效果
+            for (let pass = 0; pass < 3; pass++) {
+                ctx.shadowBlur = 15 - pass * 5;
+                ctx.shadowColor = pass === 0 ? 'rgba(0, 255, 100, 0.3)' : 'rgba(255, 100, 50, 0.2)';
+                
+                ctx.beginPath();
+                waveformData.forEach((point, i) => {
+                    if (i === 0) {
+                        ctx.moveTo(point.x, centerY + point.y);
+                    } else {
+                        ctx.lineTo(point.x, centerY + point.y);
+                    }
+                });
+                
+                // 渐变色
+                const gradient = ctx.createLinearGradient(0, 0, width, 0);
+                gradient.addColorStop(0, 'rgba(0, 255, 100, 0.8)');
+                gradient.addColorStop(0.5, 'rgba(100, 255, 150, 0.9)');
+                gradient.addColorStop(1, 'rgba(255, 100, 80, 0.8)');
+                
+                ctx.strokeStyle = gradient;
+                ctx.lineWidth = 2 + pass * 0.5;
+                ctx.stroke();
+            }
+            
+            ctx.shadowBlur = 0;
+        }
+        
+        // 更新波形数据
+        function updateWaveform(deltaTime) {
+            currentBPM = calculateBPM();
+            const beatInterval = (60 / currentBPM) * 1000; // 毫秒
+            
+            heartbeatProgress += deltaTime;
+            
+            // 移动所有点向左
+            const scrollSpeed = 2;
+            waveformData.forEach(point => {
+                point.x -= scrollSpeed;
+            });
+            
+            // 移除离开屏幕的点
+            waveformData = waveformData.filter(point => point.x > -100);
+            
+            // 检查是否该产生新心跳
+            if (heartbeatProgress >= beatInterval) {
+                heartbeatProgress = 0;
+                lastBeatTime = Date.now();
+                
+                // 生成QRS波形
+                const qrsWaves = generateQRSWave(width, 80);
+                waveformData.push(...qrsWaves);
+                
+                // 在R波峰值创建文字爆炸
+                const rWave = qrsWaves[2]; // R波是第3个点
+                createTextExplosion(rWave.x, height / 2 + rWave.y);
+            }
+            
+            // 填充基线
+            if (waveformData.length === 0 || waveformData[waveformData.length - 1].x < width) {
+                waveformData.push({ x: width, y: 0 });
+            }
+        }
+        
+        // 更新和绘制粒子
+        function updateParticles(deltaTime) {
+            particles.forEach(particle => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.vy += 0.05; // 重力
+                particle.life -= deltaTime / 3000;
+                
+                if (particle.life > 0) {
+                    ctx.save();
+                    ctx.globalAlpha = particle.life;
+                    ctx.fillStyle = `rgba(255, ${150 + particle.life * 100}, ${100 + particle.life * 150}, 1)`;
+                    ctx.font = `${particle.size}px serif`;
+                    ctx.shadowBlur = 10;
+                    ctx.shadowColor = 'rgba(255, 200, 150, 0.8)';
+                    ctx.fillText(particle.char, particle.x, particle.y);
+                    ctx.restore();
+                }
+            });
+            
+            particles = particles.filter(p => p.life > 0);
+        }
+        
+        // 绘制BPM显示
+        function drawBPM() {
+            ctx.save();
+            ctx.fillStyle = 'rgba(0, 255, 150, 0.8)';
+            ctx.font = 'bold 24px "Courier New"';
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = 'rgba(0, 255, 150, 0.6)';
+            ctx.fillText(`BPM: ${Math.round(currentBPM)}`, 20, height - 30);
+            
+            // 心率状态
+            let status = '平静';
+            if (currentBPM > 100) status = '紧张';
+            else if (currentBPM > 80) status = '不安';
+            
+            ctx.font = '16px "Courier New"';
+            ctx.fillStyle = 'rgba(150, 200, 255, 0.7)';
+            ctx.fillText(`状态: ${status}`, 20, height - 60);
+            
+            ctx.restore();
+        }
+        
+        // 主动画循环
+        let lastTime = Date.now();
+        function animate() {
+            const now = Date.now();
+            const deltaTime = now - lastTime;
+            lastTime = now;
+            
+            // 清空画布 (带拖尾效果)
+            ctx.fillStyle = 'rgba(5, 10, 20, 0.15)';
+            ctx.fillRect(0, 0, width, height);
+            
+            // 绘制网格
+            drawGrid();
+            
+            // 更新和绘制波形
+            updateWaveform(deltaTime);
+            drawWaveform();
+            
+            // 更新和绘制粒子
+            updateParticles(deltaTime);
+            
+            // 绘制BPM
+            drawBPM();
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // 初始化
+        ctx.fillStyle = '#050a14';
+        ctx.fillRect(0, 0, width, height);
+        
+        // 启动动画
+        animate();
+    </script>
+</body>
+</html>

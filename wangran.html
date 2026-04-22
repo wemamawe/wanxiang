@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>只是当时已惘然 · 锦瑟</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(180deg, #f5f5f0 0%, #d8d8d0 50%, #a0a09a 100%);
+            overflow: hidden;
+            font-family: 'KaiTi', 'STKaiti', 'BiauKai', serif;
+        }
+        canvas {
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+            background: linear-gradient(180deg, #f8f8f3 0%, #e8e8e0 100%);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="520" height="700"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // 李商隐《锦瑟》全文（竖排从右到左）
+        const poem = [
+            '只是当时已惘然',
+            '此情可待成追忆',
+            '蓝田日暖玉生烟',
+            '沧海月明珠有泪',
+            '望帝春心托杜鹃',
+            '庄生晓梦迷蝴蝶',
+            '一弦一柱思华年',
+            '锦瑟无端五十弦'
+        ];
+
+        // 烟雾粒子系统
+        class Smoke {
+            constructor() {
+                this.x = W / 2 + (Math.random() - 0.5) * 200;
+                this.y = H + 50;
+                this.vx = (Math.random() - 0.5) * 0.5;
+                this.vy = -0.3 - Math.random() * 0.5;
+                this.size = 40 + Math.random() * 80;
+                this.alpha = 0.03 + Math.random() * 0.05;
+                this.life = 1;
+                this.decay = 0.002 + Math.random() * 0.003;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= this.decay;
+                this.size += 0.3;
+                this.alpha = this.life * (0.03 + Math.random() * 0.02);
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size);
+                gradient.addColorStop(0, 'rgba(200, 200, 195, 0.8)');
+                gradient.addColorStop(0.5, 'rgba(180, 180, 175, 0.4)');
+                gradient.addColorStop(1, 'rgba(160, 160, 155, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // 珍珠光点
+        class Pearl {
+            constructor() {
+                this.x = Math.random() * W;
+                this.y = Math.random() * H;
+                this.size = 2 + Math.random() * 3;
+                this.alpha = 0.3 + Math.random() * 0.4;
+                this.vx = (Math.random() - 0.5) * 0.2;
+                this.vy = Math.sin(Date.now() * 0.001 + Math.random() * 10) * 0.3;
+                this.phase = Math.random() * Math.PI * 2;
+            }
+
+            update(time) {
+                this.x += this.vx;
+                this.y += Math.sin(time * 0.001 + this.phase) * 0.2;
+                
+                if (this.x < 0) this.x = W;
+                if (this.x > W) this.x = 0;
+                if (this.y < 0) this.y = H;
+                if (this.y > H) this.y = 0;
+
+                this.alpha = 0.3 + Math.sin(time * 0.002 + this.phase) * 0.3;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha;
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size * 2);
+                gradient.addColorStop(0, 'rgba(220, 220, 215, 1)');
+                gradient.addColorStop(0.5, 'rgba(200, 200, 195, 0.5)');
+                gradient.addColorStop(1, 'rgba(180, 180, 175, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        // 蝴蝶剪影
+        class Butterfly {
+            constructor() {
+                this.x = Math.random() * W;
+                this.y = H / 2 + (Math.random() - 0.5) * 200;
+                this.vx = 0.5 + Math.random() * 0.5;
+                this.vy = (Math.random() - 0.5) * 0.3;
+                this.size = 15 + Math.random() * 10;
+                this.alpha = 0.15 + Math.random() * 0.1;
+                this.wingAngle = 0;
+                this.wingSpeed = 0.1 + Math.random() * 0.1;
+                this.life = 1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy + Math.sin(this.x * 0.02) * 0.2;
+                this.wingAngle += this.wingSpeed;
+                this.life -= 0.001;
+                
+                if (this.x > W + 50) {
+                    this.x = -50;
+                    this.y = H / 2 + (Math.random() - 0.5) * 200;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha * this.life;
+                ctx.translate(this.x, this.y);
+                
+                const wing = Math.abs(Math.sin(this.wingAngle));
+                
+                // 左翅
+                ctx.beginPath();
+                ctx.ellipse(-this.size * 0.3, 0, this.size * 0.6, this.size * wing * 0.8, -0.3, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(80, 80, 75, 0.6)';
+                ctx.fill();
+                
+                // 右翅
+                ctx.beginPath();
+                ctx.ellipse(this.size * 0.3, 0, this.size * 0.6, this.size * wing * 0.8, 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // 字符烟雾效果
+        class CharSmoke {
+            constructor(x, y) {
+                this.x = x + (Math.random() - 0.5) * 15;
+                this.y = y + (Math.random() - 0.5) * 15;
+                this.vx = (Math.random() - 0.5) * 0.3;
+                this.vy = -0.2 - Math.random() * 0.3;
+                this.size = 3 + Math.random() * 5;
+                this.alpha = 0.1 + Math.random() * 0.15;
+                this.life = 1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.life -= 0.01;
+                this.size += 0.1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.globalAlpha = this.alpha * this.life;
+                const gradient = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.size);
+                gradient.addColorStop(0, 'rgba(120, 120, 115, 0.4)');
+                gradient.addColorStop(1, 'rgba(100, 100, 95, 0)');
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            isDead() {
+                return this.life <= 0;
+            }
+        }
+
+        // 初始化粒子数组
+        const smokes = [];
+        const pearls = Array.from({ length: 50 }, () => new Pearl());
+        const butterflies = [];
+        const charSmokes = [];
+
+        // 动画循环
+        let lastTime = Date.now();
+        
+        function animate() {
+            const now = Date.now();
+            
+            // 半透明清屏（留下轨迹）
+            ctx.fillStyle = 'rgba(248, 248, 243, 0.1)';
+            ctx.fillRect(0, 0, W, H);
+
+            // 更新和绘制珍珠
+            pearls.forEach(pearl => {
+                pearl.update(now);
+                pearl.draw();
+            });
+
+            // 生成烟雾
+            if (Math.random() < 0.3) {
+                smokes.push(new Smoke());
+            }
+
+            // 更新和绘制烟雾
+            for (let i = smokes.length - 1; i >= 0; i--) {
+                smokes[i].update();
+                smokes[i].draw();
+                if (smokes[i].isDead()) {
+                    smokes.splice(i, 1);
+                }
+            }
+
+            // 生成蝴蝶（低频）
+            if (Math.random() < 0.01 && butterflies.length < 3) {
+                butterflies.push(new Butterfly());
+            }
+
+            // 更新和绘制蝴蝶
+            for (let i = butterflies.length - 1; i >= 0; i--) {
+                butterflies[i].update();
+                butterflies[i].draw();
+                if (butterflies[i].isDead()) {
+                    butterflies.splice(i, 1);
+                }
+            }
+
+            // 绘制诗句（竖排从右到左）
+            ctx.font = '28px KaiTi, STKaiti, BiauKai, serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+
+            const startX = W - 60;
+            const columnSpacing = 50;
+            const charSpacing = 36;
+            const startY = 100;
+
+            poem.forEach((line, colIndex) => {
+                const x = startX - colIndex * columnSpacing;
+                
+                for (let i = 0; i < line.length; i++) {
+                    const y = startY + i * charSpacing;
+                    const char = line[i];
+
+                    // 字符主体（带轻微透明）
+                    ctx.save();
+                    ctx.globalAlpha = 0.75;
+                    ctx.fillStyle = '#4a4a45';
+                    ctx.fillText(char, x, y);
+                    ctx.restore();
+
+                    // 字符边缘发光效果
+                    ctx.save();
+                    ctx.globalAlpha = 0.2;
+                    ctx.shadowColor = 'rgba(160, 160, 155, 0.8)';
+                    ctx.shadowBlur = 8;
+                    ctx.fillStyle = '#8a8a85';
+                    ctx.fillText(char, x, y);
+                    ctx.restore();
+
+                    // 随机生成字符烟雾
+                    if (Math.random() < 0.02) {
+                        charSmokes.push(new CharSmoke(x, y));
+                    }
+                }
+            });
+
+            // 更新和绘制字符烟雾
+            for (let i = charSmokes.length - 1; i >= 0; i--) {
+                charSmokes[i].update();
+                charSmokes[i].draw();
+                if (charSmokes[i].isDead()) {
+                    charSmokes.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>

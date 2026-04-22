@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>捕梦 · Dreamcatcher</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(180deg, #0a1128 0%, #1a1a3e 50%, #0f0f23 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'STKaiti', 'KaiTi', serif;
+        }
+        canvas {
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="520" height="700"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+
+        // 星星背景
+        const stars = [];
+        for (let i = 0; i < 100; i++) {
+            stars.push({
+                x: Math.random() * width,
+                y: Math.random() * height,
+                radius: Math.random() * 1.5,
+                opacity: Math.random() * 0.5 + 0.2,
+                twinkleSpeed: Math.random() * 0.02 + 0.01
+            });
+        }
+
+        // 捕梦网配置
+        const dreamcatcher = {
+            x: width / 2,
+            y: 180,
+            radius: 80,
+            swingAngle: 0,
+            swingSpeed: 0.015,
+            swingAmplitude: 0.08
+        };
+
+        // 粒子系统
+        const particles = [];
+        const maxParticles = 80;
+        const textPhrases = ['捕一场旧梦', '网住月光', '放走星辰'];
+        
+        // 鼠标位置
+        let mouseX = -1000;
+        let mouseY = -1000;
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            mouseX = -1000;
+            mouseY = -1000;
+        });
+
+        // 粒子类
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                const side = Math.floor(Math.random() * 4);
+                if (side === 0) { // 上
+                    this.x = Math.random() * width;
+                    this.y = -10;
+                } else if (side === 1) { // 右
+                    this.x = width + 10;
+                    this.y = Math.random() * height;
+                } else if (side === 2) { // 下
+                    this.x = Math.random() * width;
+                    this.y = height + 10;
+                } else { // 左
+                    this.x = -10;
+                    this.y = Math.random() * height;
+                }
+
+                this.targetX = dreamcatcher.x + (Math.random() - 0.5) * 160;
+                this.targetY = dreamcatcher.y + (Math.random() - 0.5) * 160;
+                
+                this.vx = 0;
+                this.vy = 0;
+                this.speed = Math.random() * 0.5 + 0.3;
+                this.size = Math.random() * 2.5 + 1;
+                this.opacity = 0;
+                this.maxOpacity = Math.random() * 0.6 + 0.4;
+                
+                const colors = ['#FFD700', '#F0E68C', '#E6E6FA', '#DDA0DD'];
+                this.color = colors[Math.floor(Math.random() * colors.length)];
+                
+                this.caught = false;
+                this.stickTime = 0;
+                this.maxStickTime = Math.random() * 100 + 60;
+                this.phase = 'approaching'; // approaching, caught, passing
+                
+                this.isText = Math.random() < 0.08;
+                if (this.isText) {
+                    this.text = textPhrases[Math.floor(Math.random() * textPhrases.length)];
+                    this.size = 12;
+                }
+            }
+
+            update() {
+                if (this.phase === 'approaching') {
+                    // 向捕梦网移动
+                    const dx = this.targetX - this.x;
+                    const dy = this.targetY - this.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // 鼠标交互
+                    const mouseDx = mouseX - this.x;
+                    const mouseDy = mouseY - this.y;
+                    const mouseDist = Math.sqrt(mouseDx * mouseDx + mouseDy * mouseDy);
+                    
+                    if (mouseDist < 100) {
+                        const force = (100 - mouseDist) / 100 * 2;
+                        this.vx -= (mouseDx / mouseDist) * force;
+                        this.vy -= (mouseDy / mouseDist) * force;
+                    }
+                    
+                    if (dist > 5) {
+                        this.vx += (dx / dist) * this.speed * 0.1;
+                        this.vy += (dy / dist) * this.speed * 0.1;
+                        this.vx *= 0.95;
+                        this.vy *= 0.95;
+                        
+                        this.x += this.vx;
+                        this.y += this.vy;
+                        
+                        if (this.opacity < this.maxOpacity) {
+                            this.opacity += 0.02;
+                        }
+                    } else {
+                        // 到达捕梦网，决定是被捕获还是穿过
+                        const centerDist = Math.sqrt(
+                            Math.pow(this.x - dreamcatcher.x, 2) + 
+                            Math.pow(this.y - dreamcatcher.y, 2)
+                        );
+                        
+                        if (centerDist < dreamcatcher.radius * 0.6 && Math.random() < 0.4) {
+                            this.phase = 'caught';
+                            this.caught = true;
+                        } else {
+                            this.phase = 'passing';
+                        }
+                    }
+                } else if (this.phase === 'caught') {
+                    // 被捕获，闪烁后消失
+                    this.stickTime++;
+                    this.opacity = this.maxOpacity * (1 - this.stickTime / this.maxStickTime) * 
+                                   (0.5 + 0.5 * Math.sin(this.stickTime * 0.2));
+                    
+                    if (this.stickTime > this.maxStickTime) {
+                        this.reset();
+                    }
+                } else if (this.phase === 'passing') {
+                    // 穿过捕梦网，继续飘向远方
+                    const angle = Math.atan2(this.y - dreamcatcher.y, this.x - dreamcatcher.x);
+                    this.x += Math.cos(angle) * 2;
+                    this.y += Math.sin(angle) * 2;
+                    this.opacity -= 0.02;
+                    
+                    if (this.opacity <= 0 || this.x < -50 || this.x > width + 50 || 
+                        this.y < -50 || this.y > height + 50) {
+                        this.reset();
+                    }
+                }
+            }
+
+            draw() {
+                if (this.opacity <= 0) return;
+                
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                
+                if (this.isText) {
+                    ctx.fillStyle = this.color;
+                    ctx.font = '14px STKaiti, KaiTi';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(this.text, this.x, this.y);
+                } else {
+                    // 发光效果
+                    const gradient = ctx.createRadialGradient(
+                        this.x, this.y, 0,
+                        this.x, this.y, this.size * 3
+                    );
+                    gradient.addColorStop(0, this.color);
+                    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                    
+                    ctx.fillStyle = gradient;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 3, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                ctx.restore();
+            }
+        }
+
+        // 初始化粒子
+        for (let i = 0; i < maxParticles; i++) {
+            particles.push(new Particle());
+        }
+
+        // 绘制星星
+        function drawStars() {
+            stars.forEach(star => {
+                star.opacity += Math.sin(Date.now() * star.twinkleSpeed) * 0.01;
+                star.opacity = Math.max(0.1, Math.min(0.7, star.opacity));
+                
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                ctx.fill();
+            });
+        }
+
+        // 绘制捕梦网
+        function drawDreamcatcher() {
+            ctx.save();
+            
+            // 计算摆动
+            dreamcatcher.swingAngle += dreamcatcher.swingSpeed;
+            const swing = Math.sin(dreamcatcher.swingAngle) * dreamcatcher.swingAmplitude;
+            
+            ctx.translate(dreamcatcher.x, dreamcatcher.y);
+            ctx.rotate(swing);
+            
+            // 挂绳
+            ctx.strokeStyle = 'rgba(200, 200, 220, 0.5)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(0, -dreamcatcher.radius - 10);
+            ctx.lineTo(0, -150);
+            ctx.stroke();
+            
+            // 外环
+            ctx.strokeStyle = 'rgba(220, 220, 240, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, dreamcatcher.radius, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // 内网 - 螺旋编织
+            ctx.strokeStyle = 'rgba(200, 200, 220, 0.4)';
+            ctx.lineWidth = 1;
+            
+            // 8条主线
+            for (let i = 0; i < 8; i++) {
+                const angle = (Math.PI * 2 / 8) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(
+                    Math.cos(angle) * dreamcatcher.radius,
+                    Math.sin(angle) * dreamcatcher.radius
+                );
+                ctx.stroke();
+            }
+            
+            // 同心圆网格
+            for (let r = 20; r < dreamcatcher.radius; r += 15) {
+                ctx.beginPath();
+                ctx.arc(0, 0, r, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            
+            // 珠子装饰（在环上）
+            for (let i = 0; i < 12; i++) {
+                const angle = (Math.PI * 2 / 12) * i;
+                const x = Math.cos(angle) * dreamcatcher.radius;
+                const y = Math.sin(angle) * dreamcatcher.radius;
+                
+                ctx.fillStyle = ['#FFD700', '#DDA0DD', '#87CEEB'][i % 3];
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            // 底部垂饰
+            for (let i = 0; i < 4; i++) {
+                const offsetX = (i - 1.5) * 30;
+                const hangLength = 80 + Math.random() * 40;
+                const hangSwing = Math.sin(dreamcatcher.swingAngle + i) * 5;
+                
+                // 垂线
+                ctx.strokeStyle = 'rgba(200, 200, 220, 0.4)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(offsetX, dreamcatcher.radius);
+                ctx.lineTo(offsetX + hangSwing, dreamcatcher.radius + hangLength);
+                ctx.stroke();
+                
+                // 珠子
+                ctx.fillStyle = '#DDA0DD';
+                ctx.beginPath();
+                ctx.arc(offsetX + hangSwing * 0.5, dreamcatcher.radius + hangLength * 0.4, 4, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 羽毛（简笔）
+                ctx.save();
+                ctx.translate(offsetX + hangSwing, dreamcatcher.radius + hangLength);
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                ctx.lineWidth = 1.5;
+                
+                // 羽毛中轴
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(0, 25);
+                ctx.stroke();
+                
+                // 羽毛绒毛
+                ctx.lineWidth = 0.8;
+                for (let j = 0; j < 8; j++) {
+                    const fy = j * 3;
+                    const fw = 8 - j;
+                    ctx.beginPath();
+                    ctx.moveTo(0, fy);
+                    ctx.lineTo(-fw, fy + 2);
+                    ctx.moveTo(0, fy);
+                    ctx.lineTo(fw, fy + 2);
+                    ctx.stroke();
+                }
+                
+                ctx.restore();
+            }
+            
+            ctx.restore();
+        }
+
+        // 主循环
+        function animate() {
+            // 背景渐变
+            const gradient = ctx.createLinearGradient(0, 0, 0, height);
+            gradient.addColorStop(0, '#0a1128');
+            gradient.addColorStop(0.5, '#1a1a3e');
+            gradient.addColorStop(1, '#0f0f23');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, width, height);
+            
+            drawStars();
+            
+            // 更新和绘制粒子
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            
+            drawDreamcatcher();
+            
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
