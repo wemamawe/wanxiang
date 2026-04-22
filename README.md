@@ -62,10 +62,6 @@ No install. No build. Just open.
 
 The gallery homepage supports **English** and **中文**, switchable via the EN/中文 toggle in the top-right corner. Language preference is saved in localStorage.
 
-## Credits
-
-Inspired by [Sihua (思花)](https://www.xiaohongshu.com/user/profile/5be7c2446b58b745447e945f) digital art on Xiaohongshu.
-
 ## License
 
 MIT
