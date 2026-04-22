@@ -10,7 +10,7 @@ body {
   background:#b8d9f0;
   display:flex; align-items:center; justify-content:center;
   min-height:100vh; overflow:hidden;
-  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
 }
 canvas { display:block; }
 </style>
@@ -24,295 +24,206 @@ const W = 520, H = 700;
 canvas.width = W; canvas.height = H;
 
 // ══════════════════════════════════════════════════
-//  阶段时间轴
-//  Phase 0: UI + 初春枯枝 (0-200)
-//  Phase 1: 进度卡住68%，花苞出现 (200-350)
-//  Phase 2: 花朵盛开，UI消失 (350-500)
-//  Phase 3: 满屏花雨 + 标题 (500-700)
+//  帧时间轴（全部用帧数，不用比例，避免换算混乱）
+//  0   - 100  : UI出现，进度条推进到68%
+//  100 - 280  : 进度卡住，枝干逐步长出
+//  280 - 420  : 末梢花苞出现（所有tip节点）
+//  420 - 580  : 花苞绽放成樱花，UI消失
+//  580 - 800  : 满屏花雨 + 标题
+//  800        : 循环
 // ══════════════════════════════════════════════════
-const P1 = 200, P2 = 350, P3 = 500, PTOTAL = 750;
-const PROGRESS_STOP = 0.68;
+const F_UI_DONE    = 100;
+const F_BUD_START  = 280;   // 花苞出现
+const F_BLOOM_START= 420;   // 花苞→花
+const F_TITLE      = 580;   // 标题
+const F_TOTAL      = 800;
+const STOP = 0.68;
 
 // ══════════════════════════════════════════════════
-//  思花风格：扁平矢量树枝系统
-//  特点：深棕细枝，斜45°从角落伸入，节点清晰
+//  树枝系统：帧数控制出现时机
 // ══════════════════════════════════════════════════
 const BRANCHES = [];
 
-function buildTree(x, y, angle, len, depth, phase, jitter) {
-  if (depth <= 0 || len < 5) return;
+function buildTree(x, y, angle, len, depth, startFrame, jitter) {
+  if (depth <= 0 || len < 4) return;
   const rng = () => (Math.random() - 0.5) * jitter;
   const ex = x + Math.cos(angle + rng()) * len;
   const ey = y + Math.sin(angle + rng()) * len;
-  // 出现时机：depth越小（越末梢）出现越晚
-  const appearT = phase + (8 - depth) * 0.06 + Math.random() * 0.04;
+  // 越末梢出现越晚，间隔20帧/层
+  const sf = startFrame + 20 + Math.random() * 10;
   BRANCHES.push({
     x1: x, y1: y, x2: ex, y2: ey,
     depth,
-    t: 0,           // 绘制进度 0→1
-    appearT,        // 占总进度0~1的出现时机
-    lw: Math.max(0.6, depth * 0.45),
+    drawT: 0,
+    startFrame: sf,
+    lw: Math.max(0.5, depth * 0.42),
     isTip: depth <= 2,
-    // 每个tip节点的花苞/花
-    bud: { r: 0, open: 0, color: `hsl(${342+Math.random()*20},${60+Math.random()*25}%,${78+Math.random()*14}%)` },
+    budR: 0, flowerR: 0,
+    color: `hsl(${340+Math.random()*22},${62+Math.random()*22}%,${76+Math.random()*16}%)`,
     ex, ey,
-    // 小分叉概率
-    hasSpur: depth >= 4 && Math.random() < 0.35,
-    spurAngle: angle + (Math.random() > 0.5 ? 1 : -1) * (0.5 + Math.random() * 0.4),
   });
-  const spread = 0.22 + Math.random() * 0.16;
-  buildTree(ex, ey, angle - spread, len * 0.73, depth - 1, appearT, jitter * 0.8);
-  buildTree(ex, ey, angle + spread, len * 0.70, depth - 1, appearT, jitter * 0.8);
-  if (depth >= 6 && Math.random() < 0.3) {
-    buildTree(ex, ey, angle - spread * 0.3, len * 0.52, depth - 2, appearT, jitter);
+  const spread = 0.24 + Math.random() * 0.15;
+  buildTree(ex, ey, angle - spread, len * 0.72, depth-1, sf, jitter * 0.85);
+  buildTree(ex, ey, angle + spread, len * 0.70, depth-1, sf, jitter * 0.85);
+  if (depth >= 5 && Math.random() < 0.35) {
+    buildTree(ex, ey, angle - spread*0.4, len*0.5, depth-2, sf, jitter);
   }
 }
 
-// 左上角 → 右下方向斜插（思花标志性构图）
-buildTree(0, H * 0.05, 0.42, 80, 9, 0.0, 0.25);
-// 右上角 → 左下
-buildTree(W, H * 0.0, Math.PI - 0.38, 72, 8, 0.05, 0.25);
-// 左边中段
-buildTree(0, H * 0.45, 0.2, 55, 7, 0.08, 0.3);
-// 底部小枝
-buildTree(W * 0.15, H, -Math.PI / 2 + 0.3, 50, 6, 0.12, 0.3);
-buildTree(W * 0.82, H, -Math.PI / 2 - 0.25, 45, 6, 0.14, 0.3);
+// 5棵树，从画面四角和侧边伸入（思花构图）
+buildTree(  0, H*0.05,  0.40, 85, 9, F_UI_DONE,      0.22);
+buildTree(  W, H*0.02,  Math.PI-0.35, 78, 8, F_UI_DONE+10, 0.22);
+buildTree(  0, H*0.50,  0.18, 60, 7, F_UI_DONE+20, 0.28);
+buildTree(W*0.18, H, -Math.PI/2+0.28, 55, 6, F_UI_DONE+25, 0.28);
+buildTree(W*0.80, H, -Math.PI/2-0.22, 50, 6, F_UI_DONE+30, 0.28);
+
+// 预计算末梢节点（方便花苞/花绘制）
+const TIPS = BRANCHES.filter(b => b.isTip);
 
 // ══════════════════════════════════════════════════
-//  飘落花瓣
+//  飘落花瓣池
 // ══════════════════════════════════════════════════
 const PETALS = [];
-function spawnPetal(x, y, big) {
+function spawnPetal(x, y) {
   PETALS.push({
-    x, y,
-    vx: (Math.random() - 0.5) * 1.4,
-    vy: 0.6 + Math.random() * 1.0,
-    r: big ? 7 + Math.random() * 6 : 3 + Math.random() * 4,
-    rot: Math.random() * Math.PI * 2,
-    vRot: (Math.random() - 0.5) * 0.07,
-    alpha: 0.85 + Math.random() * 0.15,
-    color: `hsl(${336 + Math.random() * 28},${58 + Math.random() * 28}%,${78 + Math.random() * 14}%)`,
-    wobble: Math.random() * Math.PI * 2,
+    x: x ?? Math.random()*W, y: y ?? -12,
+    vx:(Math.random()-0.5)*1.6, vy:0.7+Math.random()*1.1,
+    r:5+Math.random()*7,
+    rot:Math.random()*Math.PI*2, vRot:(Math.random()-0.5)*0.08,
+    alpha:0.9, wobble:Math.random()*Math.PI*2,
+    color:`hsl(${336+Math.random()*28},${58+Math.random()*28}%,${78+Math.random()*14}%)`,
   });
 }
 
 // ══════════════════════════════════════════════════
-//  辅助：圆角矩形
+//  圆角矩形
 // ══════════════════════════════════════════════════
-function rRect(x, y, w, h, r) {
+function rRect(x,y,w,h,r){
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);    ctx.arcTo(x+w, y,   x+w, y+r,   r);
-  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
-  ctx.lineTo(x + r, y + h);    ctx.arcTo(x, y+h, x, y+h-r, r);
-  ctx.lineTo(x, y + r);        ctx.arcTo(x, y,   x+r, y,   r);
+  ctx.moveTo(x+r,y); ctx.lineTo(x+w-r,y); ctx.arcTo(x+w,y,x+w,y+r,r);
+  ctx.lineTo(x+w,y+h-r); ctx.arcTo(x+w,y+h,x+w-r,y+h,r);
+  ctx.lineTo(x+r,y+h); ctx.arcTo(x,y+h,x,y+h-r,r);
+  ctx.lineTo(x,y+r); ctx.arcTo(x,y,x+r,y,r);
   ctx.closePath();
 }
 
 // ══════════════════════════════════════════════════
-//  绘制思花风格樱花（5瓣，扁平插画感）
+//  绘制5瓣樱花（思花插画风，扁平圆润）
 // ══════════════════════════════════════════════════
-function drawSakura(x, y, r, color, openRatio, alpha) {
-  if (r < 0.3) return;
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  // 5花瓣
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
-    const pr = r * 0.82 * openRatio;
-    const px = x + Math.cos(a) * pr;
-    const py = y + Math.sin(a) * pr;
-    ctx.beginPath();
-    ctx.arc(px, py, r * 0.60 * openRatio, 0, Math.PI * 2);
-    ctx.fillStyle = color;
-    ctx.fill();
-    // 花瓣内侧深色纹
-    ctx.beginPath();
-    ctx.arc(px, py, r * 0.22 * openRatio, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(340,60%,65%,0.35)`;
-    ctx.fill();
-  }
-  // 花蕊
-  ctx.beginPath();
-  ctx.arc(x, y, r * 0.28, 0, Math.PI * 2);
-  ctx.fillStyle = '#fff8e0';
-  ctx.fill();
-  // 雄蕊小点
-  for (let i = 0; i < 6; i++) {
-    const sa = (i / 6) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.arc(x + Math.cos(sa) * r * 0.20, y + Math.sin(sa) * r * 0.20, 1.2, 0, Math.PI * 2);
-    ctx.fillStyle = `rgba(255,200,60,0.8)`;
-    ctx.fill();
-  }
-  ctx.restore();
-}
-
-// 花苞（未开放时）
-function drawBud(x, y, r, color, alpha) {
-  if (r < 0.3) return;
+function drawSakura(x, y, r, color, alpha) {
+  if (r < 0.5 || alpha < 0.01) return;
   ctx.save(); ctx.globalAlpha = alpha;
+  for (let i = 0; i < 5; i++) {
+    const a = (i/5)*Math.PI*2 - Math.PI/2;
+    const pr = r * 0.80;
+    const px = x + Math.cos(a)*pr;
+    const py = y + Math.sin(a)*pr;
+    ctx.beginPath(); ctx.arc(px, py, r*0.62, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+    // 花瓣内侧深色纹
+    ctx.beginPath(); ctx.arc(px, py, r*0.2, 0, Math.PI*2);
+    ctx.fillStyle = `hsla(340,55%,62%,0.3)`; ctx.fill();
+  }
+  // 花蕊白
+  ctx.beginPath(); ctx.arc(x,y,r*0.26,0,Math.PI*2);
+  ctx.fillStyle='rgba(255,250,230,0.95)'; ctx.fill();
+  // 雄蕊小点
+  for(let i=0;i<6;i++){
+    const sa=(i/6)*Math.PI*2;
+    ctx.beginPath(); ctx.arc(x+Math.cos(sa)*r*0.18, y+Math.sin(sa)*r*0.18, 1.1, 0, Math.PI*2);
+    ctx.fillStyle='rgba(255,195,55,0.85)'; ctx.fill();
+  }
+  ctx.restore();
+}
+
+// 花苞（绿苞片+粉色花蕾）
+function drawBud(x, y, r, color, alpha) {
+  if (r < 0.3 || alpha < 0.01) return;
+  ctx.save(); ctx.globalAlpha = alpha;
+  // 绿色苞片
   ctx.beginPath();
-  ctx.ellipse(x, y, r * 0.42, r * 0.7, -Math.PI / 8, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.fill();
-  // 苞片
+  ctx.ellipse(x, y+r*0.15, r*0.38, r*0.55, Math.PI/12, 0, Math.PI*2);
+  ctx.fillStyle = 'rgba(80,130,55,0.75)'; ctx.fill();
+  // 粉色花蕾
   ctx.beginPath();
-  ctx.ellipse(x, y + r * 0.25, r * 0.28, r * 0.42, Math.PI / 10, 0, Math.PI * 2);
-  ctx.fillStyle = `rgba(80,120,50,0.55)`;
-  ctx.fill();
+  ctx.ellipse(x, y-r*0.1, r*0.30, r*0.48, -Math.PI/14, 0, Math.PI*2);
+  ctx.fillStyle = color; ctx.fill();
   ctx.restore();
 }
 
 // ══════════════════════════════════════════════════
-//  UI 卡片
+//  UI卡片
 // ══════════════════════════════════════════════════
-const CARD = { x: W/2 - 155, y: H/2 - 70, w: 310, h: 140, r: 16 };
-const BAR  = { x: CARD.x + 28, y: CARD.y + 88, w: 254, h: 9, r: 5 };
+const CX = W/2-150, CY = H/2-65, CW=300, CH=130, CR=16;
+const BX = CX+26, BY = CY+82, BW=248, BH=9, BR=5;
 
 function drawUI(progress, alpha) {
   ctx.save(); ctx.globalAlpha = alpha;
+  // 卡片阴影+填充
+  ctx.shadowColor='rgba(0,0,0,0.13)'; ctx.shadowBlur=26; ctx.shadowOffsetY=9;
+  rRect(CX,CY,CW,CH,CR); ctx.fillStyle='rgba(255,255,255,0.90)'; ctx.fill();
+  ctx.shadowColor='transparent';
+  rRect(CX,CY,CW,CH,CR); ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=1; ctx.stroke();
 
-  // 毛玻璃卡片
-  ctx.shadowColor = 'rgba(0,0,0,0.14)';
-  ctx.shadowBlur = 28; ctx.shadowOffsetY = 10;
-  rRect(CARD.x, CARD.y, CARD.w, CARD.h, CARD.r);
-  ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.fill();
-  ctx.shadowColor = 'transparent';
+  // 顶部三圆点
+  ctx.fillStyle='rgba(0,0,0,0.14)';
+  [0,1,2].forEach(i=>{ ctx.beginPath(); ctx.arc(CX+14+i*13,CY+14,4,0,Math.PI*2); ctx.fill(); });
 
-  // 卡片边框
-  rRect(CARD.x, CARD.y, CARD.w, CARD.h, CARD.r);
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.stroke();
+  // 标题
+  ctx.font='500 13.5px -apple-system,"PingFang SC",sans-serif';
+  ctx.fillStyle='rgba(30,30,40,0.80)'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('正在加载春天…', W/2, CY+40);
+  ctx.font='11px -apple-system,sans-serif';
+  ctx.fillStyle='rgba(80,80,100,0.50)';
+  ctx.fillText('Spring · v2025.3', W/2, CY+58);
 
-  // 顶部系统图标行
-  ctx.fillStyle = 'rgba(0,0,0,0.15)';
-  for (let i = 0; i < 3; i++) {
-    ctx.beginPath();
-    ctx.arc(CARD.x + 16 + i * 14, CARD.y + 16, 4.5, 0, Math.PI * 2);
-    ctx.fill();
+  // 进度条底
+  rRect(BX,BY,BW,BH,BR); ctx.fillStyle='rgba(0,0,0,0.08)'; ctx.fill();
+  // 进度条填色
+  const fw = Math.max(BR*2, BW*progress);
+  rRect(BX,BY,fw,BH,BR);
+  const bg=ctx.createLinearGradient(BX,0,BX+fw,0);
+  bg.addColorStop(0,'#f9a8d4'); bg.addColorStop(0.5,'#e879a4'); bg.addColorStop(1,'#c06090');
+  ctx.fillStyle=bg; ctx.fill();
+
+  // 百分比
+  ctx.font='11px -apple-system,sans-serif'; ctx.fillStyle='rgba(100,60,80,0.55)';
+  ctx.fillText(`${Math.round(progress*100)}%  · 请勿关闭窗口`, W/2, BY+BH+16);
+
+  // 卡住时转圈
+  if(progress>=STOP-0.005){
+    const sx=BX+BW*STOP+13, sy=BY+BH/2;
+    const spin=(Date.now()/480)%(Math.PI*2);
+    ctx.beginPath(); ctx.arc(sx,sy,5,spin,spin+Math.PI*1.3);
+    ctx.strokeStyle='rgba(190,70,120,0.7)'; ctx.lineWidth=2; ctx.lineCap='round'; ctx.stroke();
   }
-
-  // 主标题
-  ctx.font = '500 14px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillStyle = 'rgba(30,30,40,0.82)';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('正在加载春天…', W / 2, CARD.y + 44);
-
-  // 副标题
-  ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillStyle = 'rgba(80,80,100,0.55)';
-  ctx.fillText('Spring · v2025.3', W / 2, CARD.y + 62);
-
-  // 进度条轨道
-  rRect(BAR.x, BAR.y, BAR.w, BAR.h, BAR.r);
-  ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.fill();
-
-  // 进度条 - 渐变粉蓝色（春日感）
-  const fillW = Math.max(BAR.r * 2, BAR.w * progress);
-  rRect(BAR.x, BAR.y, fillW, BAR.h, BAR.r);
-  const barGrad = ctx.createLinearGradient(BAR.x, 0, BAR.x + fillW, 0);
-  barGrad.addColorStop(0,   '#f9a8d4');
-  barGrad.addColorStop(0.5, '#e879a4');
-  barGrad.addColorStop(1,   '#c06090');
-  ctx.fillStyle = barGrad; ctx.fill();
-
-  // 进度百分比
-  ctx.font = '11px -apple-system, "PingFang SC", sans-serif';
-  ctx.fillStyle = 'rgba(100,60,80,0.55)';
-  ctx.fillText(`${Math.round(progress * 100)}%`, W / 2, BAR.y + BAR.h + 17);
-
-  // 卡住时的转圈等待动画
-  if (progress >= PROGRESS_STOP - 0.005) {
-    const sx = BAR.x + BAR.w * PROGRESS_STOP + 14;
-    const sy = BAR.y + BAR.h / 2;
-    const spin = (Date.now() / 500) % (Math.PI * 2);
-    ctx.beginPath();
-    ctx.arc(sx, sy, 5.5, spin, spin + Math.PI * 1.35);
-    ctx.strokeStyle = 'rgba(192,80,130,0.7)';
-    ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.stroke();
-  }
-
   ctx.restore();
 }
 
 // ══════════════════════════════════════════════════
-//  绘制所有树枝
+//  背景（天蓝 → 暖粉蓝）
 // ══════════════════════════════════════════════════
-function drawBranches(globalT) {
-  for (const b of BRANCHES) {
-    if (globalT < b.appearT) continue;
-    b.t = Math.min(1, (globalT - b.appearT) / 0.06);
+function drawBg(f) {
+  const bloom = Math.max(0, Math.min(1, (f-F_BLOOM_START)/120));
+  const g = ctx.createLinearGradient(0,0,0,H);
+  const r1=Math.round(175+bloom*35), g1=Math.round(210+bloom*8), b1=Math.round(238-bloom*18);
+  const r2=Math.round(205+bloom*20), g2=Math.round(228+bloom*4), b2=Math.round(248-bloom*22);
+  g.addColorStop(0, `rgb(${r1},${g1},${b1})`);
+  g.addColorStop(1, `rgb(${r2},${g2},${b2})`);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-    const ex = b.x1 + (b.x2 - b.x1) * easeOut(b.t);
-    const ey = b.y1 + (b.y2 - b.y1) * easeOut(b.t);
-
-    // 枝干 — 深棕细线，思花扁平风
-    ctx.beginPath();
-    ctx.moveTo(b.x1, b.y1);
-    ctx.lineTo(ex, ey);
-    ctx.strokeStyle = `rgba(52,28,14,${0.55 + b.depth * 0.04})`;
-    ctx.lineWidth = b.lw;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-
-    // 末梢：花苞 / 花
-    if (b.isTip && b.t >= 0.92) {
-      const tipT = Math.min(1, (globalT - b.appearT - 0.06) / 0.15);
-      const openRatio = Math.min(1, Math.max(0, (globalT - P2 / PTOTAL) / 0.18));
-
-      if (openRatio < 0.1) {
-        // 花苞阶段
-        const br = (3 + (10 - b.depth) * 0.8) * easeOut(tipT);
-        drawBud(b.ex, b.ey, br, b.bud.color, 0.9);
-      } else {
-        // 开花阶段
-        const fr = (5 + (10 - b.depth) * 1.1) * easeOut(tipT);
-        drawSakura(b.ex, b.ey, fr, b.bud.color, Math.min(1, openRatio * 1.3), 0.92);
-        // 盛开后飘瓣
-        if (openRatio > 0.6 && Math.random() < 0.004) {
-          spawnPetal(b.ex, b.ey, false);
-        }
-      }
-    }
-  }
-}
-
-// ══════════════════════════════════════════════════
-//  背景绘制（天蓝→粉蓝渐变，思花风格）
-// ══════════════════════════════════════════════════
-function drawBg(globalT) {
-  const bloom = Math.max(0, Math.min(1, (globalT - P2 / PTOTAL) / 0.2));
-  // 初春冷蓝 → 盛春暖粉蓝
-  const r1 = Math.round(180 + bloom * 28);
-  const g1 = Math.round(212 + bloom * 10);
-  const b1 = Math.round(240 - bloom * 15);
-  const r2 = Math.round(210 + bloom * 22);
-  const g2 = Math.round(230 + bloom * 5);
-  const b2 = Math.round(250 - bloom * 20);
-
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, `rgb(${r1},${g1},${b1})`);
-  grad.addColorStop(1, `rgb(${r2},${g2},${b2})`);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, W, H);
-
-  // 远山云雾（思花风格极简轮廓）
-  const cloudAlpha = 0.07 + bloom * 0.04;
-  ctx.fillStyle = `rgba(255,255,255,${cloudAlpha})`;
-  for (let i = 0; i < 4; i++) {
-    const cx = W * (0.1 + i * 0.28);
-    const cy = H * (0.3 + Math.sin(i * 2.1) * 0.08);
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, 60 + i * 22, 18 + i * 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // 淡云
+  ctx.fillStyle=`rgba(255,255,255,${0.06+bloom*0.05})`;
+  [[W*0.12,H*0.18,55,14],[W*0.55,H*0.12,72,18],[W*0.82,H*0.22,48,12]].forEach(([cx,cy,rx,ry])=>{
+    ctx.beginPath(); ctx.ellipse(cx,cy,rx,ry,0,0,Math.PI*2); ctx.fill();
+  });
 }
 
 // ══════════════════════════════════════════════════
 //  缓动
 // ══════════════════════════════════════════════════
-const easeOut  = t => 1 - (1 - t) ** 2.5;
-const easeOut3 = t => 1 - (1 - t) ** 3;
+const easeOut  = t => 1-(1-t)**2.5;
+const easeOut3 = t => 1-(1-t)**3;
 
 // ══════════════════════════════════════════════════
 //  主循环
@@ -322,84 +233,93 @@ let frame = 0;
 function tick() {
   requestAnimationFrame(tick);
   frame++;
-  if (frame > PTOTAL) frame = 0;
+  if (frame > F_TOTAL) frame = 0;
 
-  const T = frame / PTOTAL; // 全局进度 0→1
+  drawBg(frame);
 
-  // 背景
-  drawBg(T);
-
-  // 树枝（始终绘制）
-  drawBranches(T);
-
-  // 进度条计算
-  let progress = 0;
-  if (frame < P1) {
-    progress = Math.min(PROGRESS_STOP, easeOut(frame / (P1 * 0.9)) * (PROGRESS_STOP + 0.02));
-    progress = Math.min(PROGRESS_STOP, progress);
-  } else {
-    progress = PROGRESS_STOP;
+  // ── 1. 枝干绘制 ──
+  for (const b of BRANCHES) {
+    if (frame < b.startFrame) continue;
+    b.drawT = Math.min(1, (frame - b.startFrame) / 22);
+    const ex = b.x1 + (b.x2-b.x1) * easeOut(b.drawT);
+    const ey = b.y1 + (b.y2-b.y1) * easeOut(b.drawT);
+    ctx.beginPath(); ctx.moveTo(b.x1,b.y1); ctx.lineTo(ex,ey);
+    ctx.strokeStyle=`rgba(48,24,10,${0.55+b.depth*0.04})`;
+    ctx.lineWidth=b.lw; ctx.lineCap='round'; ctx.stroke();
   }
 
-  // UI卡片淡出
-  const uiAlpha = frame < P2 ? 1 : Math.max(0, 1 - (frame - P2) / 60);
+  // ── 2. 花苞（F_BUD_START ~ F_BLOOM_START）──
+  if (frame >= F_BUD_START) {
+    // 花苞出现进度（0→1 跨140帧）
+    const budProgress = Math.min(1, (frame - F_BUD_START) / 140);
+    for (const b of TIPS) {
+      // 已经完成绘制的枝条才显花苞
+      if (b.drawT < 0.9) continue;
+      b.budR = Math.min(1, b.budR + 0.025);  // 每帧长大
+      const r = (4 + (10-b.depth)*1.1) * easeOut(b.budR);
 
+      if (frame < F_BLOOM_START) {
+        // 纯花苞阶段
+        drawBud(b.ex, b.ey, r, b.color, Math.min(1, b.budR*3));
+      } else {
+        // 花苞→花 过渡（F_BLOOM_START后160帧内全开）
+        b.flowerR = Math.min(1, b.flowerR + 0.018);
+        const openRatio = easeOut3(b.flowerR);
+        if (openRatio < 0.5) {
+          // 混合：花苞逐渐缩小，花朵逐渐展开
+          drawBud(b.ex, b.ey, r*(1-openRatio*1.5), b.color, (1-openRatio*1.5));
+          drawSakura(b.ex, b.ey, r*openRatio*1.4, b.color, openRatio*1.4);
+        } else {
+          drawSakura(b.ex, b.ey, r, b.color, 0.92);
+          // 盛开后掉瓣
+          if (Math.random() < 0.006) spawnPetal(b.ex, b.ey);
+        }
+      }
+    }
+  }
+
+  // ── 3. UI卡片 ──
+  let progress = 0;
+  if (frame < F_UI_DONE) {
+    progress = Math.min(STOP, easeOut(frame/F_UI_DONE) * (STOP+0.04));
+    progress = Math.min(STOP, progress);
+  } else {
+    progress = STOP;
+  }
+  const uiAlpha = frame < F_BLOOM_START ? 1 : Math.max(0, 1-(frame-F_BLOOM_START)/70);
   if (uiAlpha > 0.01) drawUI(progress, uiAlpha);
 
-  // 花瓣飘落
-  // 盛开期批量产生
-  if (frame > P2 && frame < P3 && Math.random() < 0.12) {
-    spawnPetal(Math.random() * W, -10, true);
-  }
-  // 标题期大量花瓣
-  if (frame >= P3 && Math.random() < 0.25) {
-    spawnPetal(Math.random() * W, -10, true);
-  }
+  // ── 4. 花瓣飘落 ──
+  if (frame > F_BLOOM_START && Math.random() < 0.10) spawnPetal();
+  if (frame > F_TITLE      && Math.random() < 0.20) spawnPetal();
 
-  for (let i = PETALS.length - 1; i >= 0; i--) {
-    const p = PETALS[i];
-    p.wobble += 0.035;
-    p.x += p.vx + Math.sin(p.wobble) * 0.55;
-    p.y += p.vy;
-    p.rot += p.vRot;
-    p.alpha -= 0.004;
-    if (p.alpha <= 0 || p.y > H + 20) { PETALS.splice(i, 1); continue; }
-
-    ctx.save();
-    ctx.globalAlpha = p.alpha;
-    ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-    // 思花风格：简洁圆润花瓣形
-    ctx.beginPath();
-    ctx.ellipse(0, 0, p.r, p.r * 0.62, 0, 0, Math.PI * 2);
-    ctx.fillStyle = p.color; ctx.fill();
-    // 花瓣内脉
-    ctx.strokeStyle = `rgba(220,120,160,0.25)`; ctx.lineWidth = 0.6;
-    ctx.beginPath(); ctx.moveTo(0, -p.r * 0.55); ctx.lineTo(0, p.r * 0.55); ctx.stroke();
+  for (let i=PETALS.length-1; i>=0; i--) {
+    const p=PETALS[i];
+    p.wobble+=0.04; p.x+=p.vx+Math.sin(p.wobble)*0.6; p.y+=p.vy; p.rot+=p.vRot; p.alpha-=0.0035;
+    if(p.alpha<=0||p.y>H+20){PETALS.splice(i,1);continue;}
+    ctx.save(); ctx.globalAlpha=p.alpha;
+    ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+    ctx.beginPath(); ctx.ellipse(0,0,p.r,p.r*0.6,0,0,Math.PI*2);
+    ctx.fillStyle=p.color; ctx.fill();
+    ctx.strokeStyle='rgba(220,120,155,0.2)'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(0,-p.r*0.5); ctx.lineTo(0,p.r*0.5); ctx.stroke();
     ctx.restore();
   }
 
-  // ── 最终标题（思花极简文字叠加风格）──
-  if (frame >= P3) {
-    const tA = easeOut3(Math.min(1, (frame - P3) / 60));
-    ctx.save(); ctx.globalAlpha = tA;
-
-    // 主标题
-    ctx.font = '400 34px "Songti SC","SimSun","STSong",serif';
-    ctx.fillStyle = 'rgba(190,70,100,0.9)';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('春天到了', W / 2, H / 2 + 65);
-
-    // 英文副标题
-    ctx.font = 'italic 13px Georgia, "Times New Roman", serif';
-    ctx.fillStyle = 'rgba(180,100,130,0.55)';
-    ctx.fillText('Spring has arrived · 加载完成', W / 2, H / 2 + 96);
-
-    // 点缀小点
-    ctx.fillStyle = `rgba(230,140,170,${0.4 * tA})`;
-    for (let i = 0; i < 5; i++) {
-      ctx.beginPath();
-      ctx.arc(W / 2 - 40 + i * 20, H / 2 + 115, 2, 0, Math.PI * 2);
-      ctx.fill();
+  // ── 5. 最终标题 ──
+  if (frame >= F_TITLE) {
+    const tA = easeOut3(Math.min(1,(frame-F_TITLE)/70));
+    ctx.save(); ctx.globalAlpha=tA;
+    ctx.font='400 36px "Songti SC","SimSun","STSong",serif';
+    ctx.fillStyle='rgba(185,65,95,0.90)';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('春天到了', W/2, H/2+60);
+    ctx.font='italic 12.5px Georgia,serif';
+    ctx.fillStyle='rgba(180,90,120,0.52)';
+    ctx.fillText('Spring has arrived · 加载完成', W/2, H/2+90);
+    ctx.fillStyle=`rgba(225,135,165,${0.45*tA})`;
+    for(let i=0;i<5;i++){
+      ctx.beginPath(); ctx.arc(W/2-40+i*20, H/2+108, 2.2, 0, Math.PI*2); ctx.fill();
     }
     ctx.restore();
   }
