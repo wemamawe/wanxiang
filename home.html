@@ -1,513 +1,276 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>花 · 树 · 展览馆 | BLOSSOM GALLERY</title>
+    <title>Blossom Gallery | 花 · 树 · 展览馆</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-            background: #0a0a0f;
-            color: #fff;
-            overflow-x: hidden;
-            min-height: 100vh;
-        }
-
-        #particle-canvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 0;
-            pointer-events: none;
-        }
-
-        .container {
-            position: relative;
-            z-index: 1;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 60px 20px;
-        }
-
-        /* Header */
-        header {
-            text-align: center;
-            margin-bottom: 60px;
-        }
-
-        h1 {
-            font-size: clamp(2.5rem, 6vw, 5rem);
-            font-weight: 300;
-            letter-spacing: 0.3em;
-            margin-bottom: 20px;
-            background: linear-gradient(120deg, #fff 0%, #ffd1dc 30%, #e6b8ff 60%, #fff 100%);
-            background-size: 300% 100%;
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: gradientShift 8s ease infinite;
-        }
-
-        @keyframes gradientShift {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-        }
-
-        .subtitle {
-            font-size: clamp(0.9rem, 2vw, 1.1rem);
-            color: #999;
-            letter-spacing: 0.2em;
-            font-weight: 300;
-        }
-
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:#0a0a0f;color:#fff;overflow-x:hidden;min-height:100vh}
+        #particle-canvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none}
+        .container{position:relative;z-index:1;max-width:1400px;margin:0 auto;padding:60px 20px}
+        header{text-align:center;margin-bottom:60px}
+        h1{font-size:clamp(2.5rem,6vw,5rem);font-weight:300;letter-spacing:.3em;margin-bottom:20px;
+           background:linear-gradient(120deg,#fff 0%,#ffd1dc 30%,#e6b8ff 60%,#fff 100%);background-size:300% 100%;
+           -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:gradientShift 8s ease infinite}
+        @keyframes gradientShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+        .subtitle{font-size:clamp(.9rem,2vw,1.1rem);color:#999;letter-spacing:.2em;font-weight:300}
+        /* Lang switch */
+        .lang-switch{position:fixed;top:20px;right:20px;z-index:1000;display:flex;gap:0;border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,.15);backdrop-filter:blur(10px);background:rgba(255,255,255,.05)}
+        .lang-btn{padding:8px 16px;font-size:.85rem;color:#999;cursor:pointer;border:none;background:transparent;transition:all .3s;letter-spacing:.05em}
+        .lang-btn:hover{color:#fff}
+        .lang-btn.active{color:#fff;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%)}
         /* Filter Nav */
-        .filter-nav {
-            display: flex;
-            justify-content: center;
-            flex-wrap: wrap;
-            gap: 15px;
-            margin-bottom: 60px;
-        }
-
-        .filter-btn {
-            padding: 12px 24px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #ccc;
-            cursor: pointer;
-            border-radius: 30px;
-            font-size: 0.95rem;
-            transition: all 0.3s ease;
-            backdrop-filter: blur(10px);
-        }
-
-        .filter-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-        }
-
-        .filter-btn.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-color: transparent;
-            color: #fff;
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
-        }
-
+        .filter-nav{display:flex;justify-content:center;flex-wrap:wrap;gap:15px;margin-bottom:60px}
+        .filter-btn{padding:12px 24px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#ccc;cursor:pointer;border-radius:30px;font-size:.95rem;transition:all .3s ease;backdrop-filter:blur(10px)}
+        .filter-btn:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.3);transform:translateY(-2px)}
+        .filter-btn.active{background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-color:transparent;color:#fff;box-shadow:0 8px 20px rgba(102,126,234,.4)}
         /* Cards Grid */
-        .cards-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-            gap: 40px;
-            perspective: 1000px;
-        }
-
-        @media (max-width: 768px) {
-            .cards-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @media (min-width: 769px) and (max-width: 1200px) {
-            .cards-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
-        /* Card */
-        .card {
-            position: relative;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 20px;
-            padding: 40px 30px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            cursor: pointer;
-            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
-            transform-style: preserve-3d;
-            overflow: hidden;
-            opacity: 0;
-            transform: translateY(50px);
-        }
-
-        .card.show {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-            transition: left 0.5s;
-            pointer-events: none;
-        }
-
-        .card:hover::before {
-            left: 100%;
-        }
-
-        .card:hover {
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-            transform: translateY(-10px) scale(1.02);
-        }
-
-        .card-emoji {
-            font-size: 3.5rem;
-            margin-bottom: 20px;
-            display: block;
-            filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
-        }
-
-        .card-title {
-            font-size: 1.5rem;
-            margin-bottom: 8px;
-            font-weight: 500;
-            color: #fff;
-        }
-
-        .card-subtitle {
-            font-size: 0.95rem;
-            color: #888;
-            margin-bottom: 20px;
-            letter-spacing: 0.05em;
-        }
-
-        .card-tag {
-            display: inline-block;
-            padding: 6px 14px;
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 15px;
-            font-size: 0.8rem;
-            color: #aaa;
-        }
-
-        /* Gradient backgrounds for categories */
-        .card[data-category="nature"] {
-            background: linear-gradient(135deg, rgba(34, 193, 195, 0.1) 0%, rgba(45, 253, 139, 0.05) 100%);
-        }
-
-        .card[data-category="poetry"] {
-            background: linear-gradient(135deg, rgba(253, 203, 110, 0.1) 0%, rgba(255, 130, 130, 0.05) 100%);
-        }
-
-        .card[data-category="emotion"] {
-            background: linear-gradient(135deg, rgba(142, 158, 171, 0.1) 0%, rgba(238, 242, 243, 0.02) 100%);
-        }
-
-        .card[data-category="installation"] {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%);
-        }
-
-        .card.hidden {
-            display: none;
-        }
-
-        /* Footer */
-        footer {
-            text-align: center;
-            padding: 60px 20px 40px;
-            color: #666;
-            font-size: 0.9rem;
-        }
-
-        footer a {
-            color: #888;
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-
-        footer a:hover {
-            color: #fff;
-        }
-
-        /* Music Button */
-        .music-btn {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            color: #fff;
-            font-size: 1.5rem;
-            cursor: pointer;
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
-            transition: all 0.3s ease;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .music-btn:hover {
-            transform: scale(1.1);
-            box-shadow: 0 12px 30px rgba(102, 126, 234, 0.6);
-        }
-
-        .music-btn.playing {
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
+        .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:40px;perspective:1000px}
+        @media(max-width:768px){.cards-grid{grid-template-columns:1fr}}
+        @media(min-width:769px)and (max-width:1200px){.cards-grid{grid-template-columns:repeat(2,1fr)}}
+        .card{position:relative;background:rgba(255,255,255,.03);border-radius:20px;padding:40px 30px;border:1px solid rgba(255,255,255,.08);cursor:pointer;transition:all .5s cubic-bezier(.23,1,.32,1);transform-style:preserve-3d;overflow:hidden;opacity:0;transform:translateY(50px);text-decoration:none;display:block}
+        .card.show{opacity:1;transform:translateY(0)}
+        .card::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);transition:left .5s;pointer-events:none}
+        .card:hover::before{left:100%}
+        .card:hover{border-color:rgba(255,255,255,.2);box-shadow:0 20px 60px rgba(0,0,0,.5);transform:translateY(-10px) scale(1.02)}
+        .card-emoji{font-size:3.5rem;margin-bottom:20px;display:block;filter:drop-shadow(0 4px 8px rgba(0,0,0,.3))}
+        .card-title{font-size:1.5rem;margin-bottom:8px;font-weight:500;color:#fff}
+        .card-subtitle{font-size:.95rem;color:#888;margin-bottom:20px;letter-spacing:.05em}
+        .card-tag{display:inline-block;padding:6px 14px;background:rgba(255,255,255,.08);border-radius:15px;font-size:.8rem;color:#aaa}
+        .card[data-category="nature"]{background:linear-gradient(135deg,rgba(34,193,195,.1) 0%,rgba(45,253,139,.05) 100%)}
+        .card[data-category="poetry"]{background:linear-gradient(135deg,rgba(253,203,110,.1) 0%,rgba(255,130,130,.05) 100%)}
+        .card[data-category="emotion"]{background:linear-gradient(135deg,rgba(142,158,171,.1) 0%,rgba(238,242,243,.02) 100%)}
+        .card[data-category="installation"]{background:linear-gradient(135deg,rgba(102,126,234,.1) 0%,rgba(118,75,162,.05) 100%)}
+        .card.hidden{display:none}
+        footer{text-align:center;padding:60px 20px 40px;color:#666;font-size:.9rem}
+        footer a{color:#888;text-decoration:none;transition:color .3s}
+        footer a:hover{color:#fff}
+        footer p{margin-bottom:8px}
+        .music-btn{position:fixed;bottom:30px;right:30px;width:60px;height:60px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border:none;color:#fff;font-size:1.5rem;cursor:pointer;box-shadow:0 8px 20px rgba(102,126,234,.4);transition:all .3s ease;z-index:1000;display:flex;align-items:center;justify-content:center}
+        .music-btn:hover{transform:scale(1.1);box-shadow:0 12px 30px rgba(102,126,234,.6)}
+        .music-btn.playing{animation:pulse 2s ease-in-out infinite}
+        @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
     </style>
 </head>
 <body>
     <canvas id="particle-canvas"></canvas>
-
+    <div class="lang-switch">
+        <button class="lang-btn active" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="zh">中文</button>
+    </div>
     <div class="container">
         <header>
-            <h1>花 · 树 · 展览馆</h1>
-            <p class="subtitle">BLOSSOM GALLERY · 22 Scenes</p>
+            <h1 id="main-title">Blossom Gallery</h1>
+            <p class="subtitle" id="main-subtitle">INTERACTIVE WEB ART · 22 Scenes</p>
         </header>
-
-        <nav class="filter-nav">
-            <button class="filter-btn active" data-filter="all">全部</button>
-            <button class="filter-btn" data-filter="nature">🌳 自然</button>
-            <button class="filter-btn" data-filter="poetry">📜 诗词</button>
-            <button class="filter-btn" data-filter="emotion">💫 情绪</button>
-            <button class="filter-btn" data-filter="installation">🎨 装置</button>
-        </nav>
-
+        <nav class="filter-nav" id="filter-nav"></nav>
         <div class="cards-grid" id="cards-grid"></div>
-
         <footer>
-            <p>Made with Canvas 2D & Three.js</p>
-            <p><a href="https://github.com" target="_blank">GitHub</a></p>
+            <p id="footer-tech">Made with Canvas 2D & Three.js · Zero Dependencies</p>
+            <p><a href="https://github.com/wemamawe/sakura-exhibit" target="_blank">GitHub</a></p>
+            <p id="footer-credit"></p>
         </footer>
     </div>
-
     <button class="music-btn" id="music-btn">🔊</button>
+<script>
+// ══════════════════════════════════════════
+//  i18n System
+// ══════════════════════════════════════════
+const I18N = {
+  en: {
+    title: 'Blossom Gallery',
+    subtitle: 'INTERACTIVE WEB ART · 22 Scenes',
+    filterAll: 'All',
+    filterNature: '🌳 Nature',
+    filterPoetry: '📜 Poetry',
+    filterEmotion: '💫 Emotion',
+    filterInstall: '🎨 Installation',
+    catNature: '🌳 Nature',
+    catPoetry: '📜 Poetry',
+    catEmotion: '💫 Emotion',
+    catInstall: '🎨 Installation',
+    footerTech: 'Made with Canvas 2D & Three.js · Zero Dependencies',
+    footerCredit: 'Inspired by Sihua (思花) digital art',
+  },
+  zh: {
+    title: '花 · 树 · 展览馆',
+    subtitle: '交互式网页艺术 · 22 个场景',
+    filterAll: '全部',
+    filterNature: '🌳 自然',
+    filterPoetry: '📜 诗词',
+    filterEmotion: '💫 情绪',
+    filterInstall: '🎨 装置',
+    catNature: '🌳 自然',
+    catPoetry: '📜 诗词',
+    catEmotion: '💫 情绪',
+    catInstall: '🎨 装置',
+    footerTech: '基于 Canvas 2D & Three.js · 零外部依赖',
+    footerCredit: '灵感来源：思花 Sihua 数字艺术',
+  }
+};
 
-    <script>
-        // Scenes data
-        const scenes = [
-            { file: 'sakura3d.html', emoji: '🌸', title: '樱花物语', subtitle: 'Sakura·3D', category: 'nature' },
-            { file: 'peach.html', emoji: '🍑', title: '桃树四季', subtitle: 'Peach Tree·3D', category: 'nature' },
-            { file: 'ginkgo.html', emoji: '🍂', title: '银杏秋色', subtitle: 'Ginkgo·3D', category: 'nature' },
-            { file: 'fractal.html', emoji: '🌿', title: '分形生长', subtitle: 'Fractal Tree', category: 'nature' },
-            { file: 'heart.html', emoji: '❤️', title: '爱心樱花', subtitle: 'Heart Blossom', category: 'nature' },
-            { file: 'upward.html', emoji: '🌸', title: '等枝桠成繁华', subtitle: 'Upward View', category: 'nature' },
-            { file: 'spring.html', emoji: '🌸', title: '春天loading', subtitle: 'Spring', category: 'nature' },
-            { file: 'lotus.html', emoji: '🪷', title: '江南可采莲', subtitle: 'Nymphéas·Monet', category: 'nature' },
-            { file: 'swallow.html', emoji: '🕊️', title: '燕返', subtitle: 'Letter·Canvas', category: 'poetry' },
-            { file: 'ink-tree.html', emoji: '🖋️', title: '墨梅', subtitle: 'Ink Tree', category: 'poetry' },
-            { file: 'tide.html', emoji: '🌊', title: '潮汐', subtitle: 'Tide Text', category: 'poetry' },
-            { file: 'candle.html', emoji: '🕯️', title: '烛火', subtitle: 'Candle Letter', category: 'poetry' },
-            { file: 'wangran.html', emoji: '🦋', title: '惘然 锦瑟', subtitle: 'Wangran', category: 'poetry' },
-            { file: 'vortex.html', emoji: '🌀', title: '漩涡', subtitle: 'Vortex', category: 'emotion' },
-            { file: 'wet.html', emoji: '🌧️', title: '湿帘', subtitle: 'Rain Glass', category: 'emotion' },
-            { file: 'oldream.html', emoji: '🌙', title: '旧梦', subtitle: 'Old Dream', category: 'emotion' },
-            { file: 'trap.html', emoji: '🕸️', title: '陷阱', subtitle: 'Trap', category: 'emotion' },
-            { file: 'wish.html', emoji: '🌓', title: '愿与愁', subtitle: 'Wish & Sorrow', category: 'emotion' },
-            { file: 'heartbeat.html', emoji: '💓', title: '心事', subtitle: 'Heartbeat', category: 'emotion' },
-            { file: 'tears.html', emoji: '💧', title: '沪·泣', subtitle: 'Tears·Data Art', category: 'emotion' },
-            { file: 'jellyfish.html', emoji: '🪼', title: '水母灯', subtitle: 'Jellyfish·Watercolor', category: 'installation' },
-            { file: 'dreamcatcher.html', emoji: '🪺', title: '捕梦', subtitle: 'Dreamcatcher', category: 'installation' }
-        ];
+const scenes = [
+  { file:'sakura3d.html', emoji:'🌸', en:'Sakura Story',      zh:'樱花物语',     sub_en:'3D Cherry Blossom',              sub_zh:'Sakura·3D',           cat:'nature' },
+  { file:'peach.html',    emoji:'🍑', en:'Peach Seasons',     zh:'桃树四季',     sub_en:'Four Seasons of Peach',          sub_zh:'Peach Tree·3D',       cat:'nature' },
+  { file:'ginkgo.html',   emoji:'🍂', en:'Ginkgo Autumn',     zh:'银杏秋色',     sub_en:'3D Ginkgo Seasons',              sub_zh:'Ginkgo·3D',           cat:'nature' },
+  { file:'fractal.html',  emoji:'🌿', en:'Fractal Growth',    zh:'分形生长',     sub_en:'L-System Recursive Tree',        sub_zh:'Fractal Tree',        cat:'nature' },
+  { file:'heart.html',    emoji:'❤️', en:'Heart Blossom',     zh:'爱心樱花',     sub_en:'Museum Heart Tree',              sub_zh:'Heart Blossom',       cat:'nature' },
+  { file:'upward.html',   emoji:'🌸', en:'Upward View',       zh:'等枝桠成繁华', sub_en:'Branches to Bloom',              sub_zh:'Upward View',         cat:'nature' },
+  { file:'spring.html',   emoji:'🌸', en:'Spring Loading',    zh:'春天loading',  sub_en:'UI to Blossom Burst',            sub_zh:'Spring',              cat:'nature' },
+  { file:'lotus.html',    emoji:'🪷', en:'Lotus Pond',        zh:'江南可采莲',   sub_en:'Monet Impressionist Water Lily', sub_zh:'Nymphéas·Monet',      cat:'nature' },
+  { file:'swallow.html',  emoji:'🕊️', en:'Swallow Return',    zh:'燕返',         sub_en:'Zhang Ailing Farewell Letter',   sub_zh:'Letter·Canvas',       cat:'poetry' },
+  { file:'ink-tree.html', emoji:'🖋️', en:'Ink Plum',          zh:'墨梅',         sub_en:'Ink Wash on Xuan Paper',         sub_zh:'Ink Tree',            cat:'poetry' },
+  { file:'tide.html',     emoji:'🌊', en:'Tide',              zh:'潮汐',         sub_en:'Su Shi · Red Cliff Rhapsody',    sub_zh:'Tide Text',           cat:'poetry' },
+  { file:'candle.html',   emoji:'🕯️', en:'Candle',            zh:'烛火',         sub_en:'Nalan Xingde · Letter by Fire',  sub_zh:'Candle Letter',       cat:'poetry' },
+  { file:'wangran.html',  emoji:'🦋', en:'Lost in Time',      zh:'惘然',         sub_en:'Li Shangyin · Brocade Zither',   sub_zh:'锦瑟',                cat:'poetry' },
+  { file:'vortex.html',   emoji:'🌀', en:'Vortex',            zh:'漩涡',         sub_en:'Particle Spiral Characters',     sub_zh:'Vortex',              cat:'emotion' },
+  { file:'wet.html',      emoji:'🌧️', en:'Rain Glass',        zh:'湿帘',         sub_en:'Raindrops on Window',            sub_zh:'Rain Glass',          cat:'emotion' },
+  { file:'oldream.html',  emoji:'🌙', en:'Old Dream',         zh:'旧梦',         sub_en:'Turner Light Fog · Text Dissolve',sub_zh:'Old Dream',          cat:'emotion' },
+  { file:'trap.html',     emoji:'🕸️', en:'Trap',              zh:'陷阱',         sub_en:'Text Mosaic · Dove · Butterfly', sub_zh:'Trap',                cat:'emotion' },
+  { file:'wish.html',     emoji:'🌓', en:'Wish & Sorrow',     zh:'愿与愁',       sub_en:'Notebook Letters · Swimming Fish',sub_zh:'Wish & Sorrow',      cat:'emotion' },
+  { file:'heartbeat.html',emoji:'💓', en:'Heartbeat',         zh:'心事',         sub_en:'ECG Waveform · Text Burst',      sub_zh:'Heartbeat',           cat:'emotion' },
+  { file:'tears.html',    emoji:'💧', en:'Tears',             zh:'沪·泣',        sub_en:'Poetic Data Visualization',      sub_zh:'Tears·Data Art',      cat:'emotion' },
+  { file:'jellyfish.html',emoji:'🪼', en:'Jellyfish Lamp',    zh:'水母灯',       sub_en:'Watercolor Fish Chandelier',     sub_zh:'Jellyfish·Watercolor',cat:'installation' },
+  { file:'dreamcatcher.html',emoji:'🪺',en:'Dreamcatcher',    zh:'捕梦',         sub_en:'Pessoa · Empty to Bloom',        sub_zh:'Dreamcatcher',        cat:'installation' },
+];
 
-        // Render cards
-        const cardsGrid = document.getElementById('cards-grid');
-        scenes.forEach((scene, index) => {
-            const card = document.createElement('a');
-            card.href = scene.file;
-            card.className = 'card';
-            card.dataset.category = scene.category;
-            card.style.transitionDelay = `${index * 0.05}s`;
-            card.innerHTML = `
-                <span class="card-emoji">${scene.emoji}</span>
-                <div class="card-title">${scene.title}</div>
-                <div class="card-subtitle">${scene.subtitle}</div>
-                <span class="card-tag">${getCategoryName(scene.category)}</span>
-            `;
-            cardsGrid.appendChild(card);
+let lang = localStorage.getItem('blossom-lang') || 'en';
+let currentFilter = 'all';
 
-            // 3D tilt effect
-            card.addEventListener('mousemove', (e) => {
-                const rect = card.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const centerX = rect.width / 2;
-                const centerY = rect.height / 2;
-                const rotateX = (y - centerY) / 10;
-                const rotateY = (centerX - x) / 10;
-                card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-10px) scale(1.02)`;
-            });
+// ── Render ──
+function t(key) { return I18N[lang][key] || key; }
 
-            card.addEventListener('mouseleave', () => {
-                card.style.transform = '';
-            });
-        });
+const filterNav = document.getElementById('filter-nav');
+const cardsGrid = document.getElementById('cards-grid');
 
-        function getCategoryName(category) {
-            const names = {
-                nature: '🌳 自然',
-                poetry: '📜 诗词',
-                emotion: '💫 情绪',
-                installation: '🎨 装置'
-            };
-            return names[category] || category;
-        }
+function renderFilters() {
+  filterNav.innerHTML = '';
+  const filters = [
+    { key:'all', label: t('filterAll') },
+    { key:'nature', label: t('filterNature') },
+    { key:'poetry', label: t('filterPoetry') },
+    { key:'emotion', label: t('filterEmotion') },
+    { key:'installation', label: t('filterInstall') },
+  ];
+  filters.forEach(f => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (currentFilter === f.key ? ' active' : '');
+    btn.dataset.filter = f.key;
+    btn.textContent = f.label;
+    btn.addEventListener('click', () => {
+      currentFilter = f.key;
+      renderFilters();
+      applyFilter();
+    });
+    filterNav.appendChild(btn);
+  });
+}
 
-        // Filter functionality
-        const filterBtns = document.querySelectorAll('.filter-btn');
-        filterBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                filterBtns.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const filter = btn.dataset.filter;
-                const cards = document.querySelectorAll('.card');
-                cards.forEach((card, index) => {
-                    if (filter === 'all' || card.dataset.category === filter) {
-                        card.classList.remove('hidden');
-                        setTimeout(() => card.classList.add('show'), index * 50);
-                    } else {
-                        card.classList.add('hidden');
-                        card.classList.remove('show');
-                    }
-                });
-            });
-        });
+function catLabel(cat) {
+  return { nature: t('catNature'), poetry: t('catPoetry'), emotion: t('catEmotion'), installation: t('catInstall') }[cat] || cat;
+}
 
-        // Intersection Observer for scroll animations
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('show');
-                }
-            });
-        }, { threshold: 0.1 });
+function renderCards() {
+  cardsGrid.innerHTML = '';
+  scenes.forEach((s, idx) => {
+    const a = document.createElement('a');
+    a.href = s.file;
+    a.className = 'card';
+    a.dataset.category = s.cat;
+    a.style.transitionDelay = `${idx * 0.04}s`;
+    const title = lang === 'zh' ? s.zh : s.en;
+    const sub = lang === 'zh' ? s.sub_zh : s.sub_en;
+    a.innerHTML = `<span class="card-emoji">${s.emoji}</span><div class="card-title">${title}</div><div class="card-subtitle">${sub}</div><span class="card-tag">${catLabel(s.cat)}</span>`;
+    cardsGrid.appendChild(a);
+    // 3D tilt
+    a.addEventListener('mousemove', e => {
+      const r = a.getBoundingClientRect();
+      const rx = (e.clientY - r.top - r.height/2) / 10;
+      const ry = (r.width/2 - (e.clientX - r.left)) / 10;
+      a.style.transform = `perspective(1000px) rotateX(${rx}deg) rotateY(${ry}deg) translateY(-10px) scale(1.02)`;
+    });
+    a.addEventListener('mouseleave', () => { a.style.transform = ''; });
+  });
+  applyFilter();
+}
 
-        document.querySelectorAll('.card').forEach(card => observer.observe(card));
+function applyFilter() {
+  document.querySelectorAll('.card').forEach((c, i) => {
+    if (currentFilter === 'all' || c.dataset.category === currentFilter) {
+      c.classList.remove('hidden');
+      setTimeout(() => c.classList.add('show'), i * 40);
+    } else {
+      c.classList.add('hidden');
+      c.classList.remove('show');
+    }
+  });
+}
 
-        // Particle canvas background
-        const canvas = document.getElementById('particle-canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+function updateStatic() {
+  document.getElementById('main-title').textContent = t('title');
+  document.getElementById('main-subtitle').textContent = t('subtitle');
+  document.getElementById('footer-tech').textContent = t('footerTech');
+  document.getElementById('footer-credit').textContent = t('footerCredit');
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.title = lang === 'zh' ? '花 · 树 · 展览馆 | Blossom Gallery' : 'Blossom Gallery | 花 · 树 · 展览馆';
+}
 
-        class Particle {
-            constructor() {
-                this.x = Math.random() * canvas.width;
-                this.y = Math.random() * canvas.height;
-                this.vx = (Math.random() - 0.5) * 0.5;
-                this.vy = (Math.random() - 0.5) * 0.5;
-                this.radius = Math.random() * 2 + 1;
-                this.opacity = Math.random() * 0.5 + 0.2;
-            }
+function setLang(l) {
+  lang = l;
+  localStorage.setItem('blossom-lang', l);
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.dataset.lang === l));
+  updateStatic();
+  renderFilters();
+  renderCards();
+}
 
-            update() {
-                this.x += this.vx;
-                this.y += this.vy;
-                if (this.x < 0 || this.x > canvas.width) this.vx *= -1;
-                if (this.y < 0 || this.y > canvas.height) this.vy *= -1;
-            }
+// Lang switch
+document.querySelectorAll('.lang-btn').forEach(b => {
+  b.addEventListener('click', () => setLang(b.dataset.lang));
+});
 
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
-                ctx.fill();
-            }
-        }
+// Init
+setLang(lang);
 
-        const particles = Array.from({ length: 100 }, () => new Particle());
+// Intersection Observer
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('show'); });
+}, { threshold: 0.1 });
+function observeCards() { document.querySelectorAll('.card').forEach(c => obs.observe(c)); }
+new MutationObserver(observeCards).observe(cardsGrid, { childList: true });
+observeCards();
 
-        function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            particles.forEach(p => {
-                p.update();
-                p.draw();
-            });
+// ── Particle Canvas ──
+const canvas = document.getElementById('particle-canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = innerWidth; canvas.height = innerHeight;
+class Particle {
+  constructor() { this.x = Math.random()*canvas.width; this.y = Math.random()*canvas.height; this.vx = (Math.random()-.5)*.5; this.vy = (Math.random()-.5)*.5; this.r = Math.random()*2+1; this.o = Math.random()*.5+.2; }
+  update() { this.x+=this.vx; this.y+=this.vy; if(this.x<0||this.x>canvas.width)this.vx*=-1; if(this.y<0||this.y>canvas.height)this.vy*=-1; }
+  draw() { ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,Math.PI*2); ctx.fillStyle=`rgba(255,255,255,${this.o})`; ctx.fill(); }
+}
+const parts = Array.from({length:80},()=>new Particle());
+function animP() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  parts.forEach(p=>{p.update();p.draw()});
+  parts.forEach((a,i)=>parts.slice(i+1).forEach(b=>{
+    const d=Math.hypot(a.x-b.x,a.y-b.y);
+    if(d<150){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=`rgba(255,255,255,${.1*(1-d/150)})`;ctx.lineWidth=.5;ctx.stroke()}
+  }));
+  requestAnimationFrame(animP);
+}
+animP();
+addEventListener('resize',()=>{canvas.width=innerWidth;canvas.height=innerHeight});
 
-            // Draw connections
-            particles.forEach((p1, i) => {
-                particles.slice(i + 1).forEach(p2 => {
-                    const dx = p1.x - p2.x;
-                    const dy = p1.y - p2.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    if (dist < 150) {
-                        ctx.beginPath();
-                        ctx.moveTo(p1.x, p1.y);
-                        ctx.lineTo(p2.x, p2.y);
-                        ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 * (1 - dist / 150)})`;
-                        ctx.lineWidth = 0.5;
-                        ctx.stroke();
-                    }
-                });
-            });
-
-            requestAnimationFrame(animate);
-        }
-
-        animate();
-
-        window.addEventListener('resize', () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        });
-
-        // Music button with Web Audio API
-        let audioContext = null;
-        let oscillators = [];
-        let isPlaying = false;
-
-        const musicBtn = document.getElementById('music-btn');
-        musicBtn.addEventListener('click', () => {
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            if (isPlaying) {
-                oscillators.forEach(osc => osc.stop());
-                oscillators = [];
-                musicBtn.classList.remove('playing');
-                musicBtn.textContent = '🔊';
-                isPlaying = false;
-            } else {
-                // Create ambient pad sound with multiple oscillators
-                const frequencies = [220, 277, 330, 440]; // A major chord
-                const now = audioContext.currentTime;
-
-                frequencies.forEach((freq, i) => {
-                    const osc = audioContext.createOscillator();
-                    const gain = audioContext.createGain();
-                    
-                    osc.type = 'sine';
-                    osc.frequency.value = freq;
-                    
-                    gain.gain.setValueAtTime(0, now);
-                    gain.gain.linearRampToValueAtTime(0.03, now + 2);
-                    
-                    osc.connect(gain);
-                    gain.connect(audioContext.destination);
-                    
-                    osc.start(now);
-                    oscillators.push(osc);
-                });
-
-                musicBtn.classList.add('playing');
-                musicBtn.textContent = '🔇';
-                isPlaying = true;
-            }
-        });
-    </script>
+// ── Music ──
+let audioCtx=null,oscs=[],playing=false;
+const mBtn=document.getElementById('music-btn');
+mBtn.addEventListener('click',()=>{
+  if(!audioCtx) audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  if(playing){oscs.forEach(o=>o.stop());oscs=[];mBtn.classList.remove('playing');mBtn.textContent='🔊';playing=false}
+  else{const now=audioCtx.currentTime;[220,277,330,440].forEach(f=>{const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(.03,now+2);o.connect(g);g.connect(audioCtx.destination);o.start(now);oscs.push(o)});mBtn.classList.add('playing');mBtn.textContent='🔇';playing=true}
+});
+</script>
 </body>
 </html>
