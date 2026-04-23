@@ -179,68 +179,128 @@ for(let i=0;i<N;i++){
 }
 
 // ═══════════════════════════════════════
-//  物理双剑
+//  编排式双剑 — 9次碰撞，由远及近
+//  前4次间距大节奏慢，后5次密集猛烈
 // ═══════════════════════════════════════
 function baseSwordLen(){return Math.min(W,H)*.38;}
 
-const sAs={x:0,y:0,vx:0,vy:0,angle:0};
-const sBs={x:0,y:0,vx:0,vy:0,angle:0};
-let lastClashT=-9,clashFlash=0,clashFx=0,clashFy=0;
+const sAs={x:0,y:0,angle:0,sc:1};
+const sBs={x:0,y:0,angle:0,sc:1};
+let clashFlash=0,clashFx=0,clashFy=0;
+let nextClash=0; // 下一个碰撞序号
 
-function initSwords(){
-  sAs.x=W*.38;sAs.y=H*.45;sAs.angle=-.78;sAs.vx=0;sAs.vy=0;
-  sBs.x=W*.62;sBs.y=H*.45;sBs.angle=Math.PI+.78;sBs.vx=0;sBs.vy=0;
+// 碰撞编排表
+// t=碰撞时刻, sc=此时剑的scale(由远及近), n=落字数量, str=迸溅力度
+const clashes=[
+  // 前4次：由远及近，间隔~1.5s
+  {t:10,  sc:.35, n:25, str:.8},
+  {t:11.5,sc:.45, n:30, str:.9},
+  {t:13,  sc:.55, n:35, str:1.0},
+  {t:14.5,sc:.65, n:40, str:1.1},
+  // 后5次：越来越密集猛烈
+  {t:15.5,sc:.75, n:50, str:1.2},
+  {t:16.3,sc:.82, n:55, str:1.3},
+  {t:17,  sc:.88, n:65, str:1.4},
+  {t:17.5,sc:.94, n:75, str:1.5},
+  {t:17.9,sc:1.0, n:90, str:1.7},
+];
+
+// 两剑运动：从两侧对冲→碰撞→弹开→再对冲
+// 状态机：approach(对冲) / clash(碰撞瞬间) / recoil(弹开)
+let swordPhase='wait'; // wait/approach/recoil
+let phaseT=0; // 当前phase开始时间
+let recoilAngle=0; // 弹开方向
+
+function getSwordState(t){
+  if(t<9)return; // 还没开始
+  
+  // 当前scale：根据碰撞表插值
+  let sc=.3;
+  if(nextClash<clashes.length){
+    // 在当前碰撞前渐变
+    const ci=clashes[nextClash];
+    const prevSc=nextClash>0?clashes[nextClash-1].sc:.25;
+    const prevT=nextClash>0?clashes[nextClash-1].t:9;
+    const p=Math.min(1,(t-prevT)/(ci.t-prevT));
+    sc=prevSc+(ci.sc-prevSc)*p;
+  }else{
+    sc=1;
+  }
+  
+  const cx=W*.5,cy=H*.43;
+  
+  // 检测碰撞时刻
+  if(nextClash<clashes.length&&t>=clashes[nextClash].t){
+    const ci=clashes[nextClash];
+    clashFlash=1;
+    clashFx=cx;clashFy=cy;
+    spawnFall(cx,cy,ci.n,ci.str);
+    addSpark(cx,cy,Math.floor(ci.n*.3));
+    playClash(ci.str/1.7);
+    recoilAngle=Math.random()*Math.PI*2; // 随机弹开方向
+    swordPhase='recoil';phaseT=t;
+    nextClash++;
+  }
+  
+  // 计算两剑位置
+  let sepX,sepY; // 两剑相对中心的偏移
+  const swordR=Math.min(W,H)*.12; // 运动半径
+  
+  if(swordPhase==='recoil'){
+    // 弹开：快速分开然后回来
+    const rt=t-phaseT;
+    const recoilDist=swordR*(1-Math.min(1,rt/.6)); // 0.6秒回弹
+    const wobble=Math.sin(rt*15)*swordR*.08*Math.max(0,1-rt/.3); // 震颤
+    sepX=Math.cos(recoilAngle)*(recoilDist+wobble);
+    sepY=Math.sin(recoilAngle)*(recoilDist+wobble)*.7;
+    if(rt>.6){swordPhase='approach';phaseT=t;}
+  }else{
+    // 对冲：从两侧向中心靠近
+    let approachP;
+    if(nextClash<clashes.length){
+      const nextT=clashes[nextClash].t;
+      const startT=swordPhase==='wait'?9:phaseT;
+      approachP=Math.min(1,(t-startT)/(nextT-startT));
+    }else{
+      approachP=0;
+    }
+    // smooth ease in
+    const ep=approachP*approachP;
+    const dist=swordR*(1-ep*.85); // 从远处逼近
+    // 旋转运动：慢速旋转
+    const rotSpd=.8+sc*.5;
+    const rotAngle=(t-9)*rotSpd;
+    sepX=Math.cos(rotAngle)*dist;
+    sepY=Math.sin(rotAngle)*dist*.7;
+  }
+  
+  sAs.x=cx+sepX;sAs.y=cy+sepY;sAs.sc=sc;
+  sBs.x=cx-sepX;sBs.y=cy-sepY;sBs.sc=sc;
+  // 剑尖朝向对方
+  sAs.angle=Math.atan2(sBs.y-sAs.y,sBs.x-sAs.x)-Math.PI/2;
+  sBs.angle=Math.atan2(sAs.y-sBs.y,sAs.x-sBs.x)-Math.PI/2;
+  
+  if(clashFlash>0)clashFlash*=.88;
 }
 
-function updateSwords(t,dt){
-  const cx=W*.5,cy=H*.43;
-  const phase=t-9;
-  const intensity=Math.min(1,phase/4);
-  // 旋转半径：近距离缠斗
-  const r=Math.min(W,H)*(.06+.04*Math.sin(phase*1.1));
-
-  // 双剑围绕中心快速旋转
-  const spd=1.5+intensity*1.5; // 越来越快
-  const aA=phase*spd+Math.sin(phase*2.5)*.4;
-  const aTx=cx+Math.cos(aA)*r;
-  const aTy=cy+Math.sin(aA)*r*.7;
-  const bA=aA+Math.PI+Math.sin(phase*3)*.25;
-  const bTx=cx+Math.cos(bA)*r;
-  const bTy=cy+Math.sin(bA)*r*.7;
-
-  const k=4+intensity*5,damp=.84;
-  sAs.vx+=(aTx-sAs.x)*k*dt;sAs.vy+=(aTy-sAs.y)*k*dt;
-  sBs.vx+=(bTx-sBs.x)*k*dt;sBs.vy+=(bTy-sBs.y)*k*dt;
-  sAs.vx*=damp;sAs.vy*=damp;sBs.vx*=damp;sBs.vy*=damp;
-  sAs.x+=sAs.vx*dt*60;sAs.y+=sAs.vy*dt*60;
-  sBs.x+=sBs.vx*dt*60;sBs.y+=sBs.vy*dt*60;
-
-  // 朝向对方
-  sAs.angle=Math.atan2(sBs.y-sAs.y,sBs.x-sAs.x)-Math.PI/2+Math.sin(phase*4)*.1;
-  sBs.angle=Math.atan2(sAs.y-sBs.y,sAs.x-sBs.x)-Math.PI/2+Math.sin(phase*4+1)*.1;
-
-  // 碰撞
-  const dx=sAs.x-sBs.x,dy=sAs.y-sBs.y;
-  const dist=Math.sqrt(dx*dx+dy*dy);
-  const cd=baseSwordLen()*.12;
-  if(dist<cd&&(t-lastClashT)>.3){
-    lastClashT=t;clashFlash=1;
-    clashFx=(sAs.x+sBs.x)/2;clashFy=(sAs.y+sBs.y)/2;
-    const nx=dx/(dist+.1)*3,ny=dy/(dist+.1)*3;
-    sAs.vx+=nx;sAs.vy+=ny;sBs.vx-=nx;sBs.vy-=ny;
-    spawnFall(clashFx,clashFy,25+Math.floor(intensity*30),1+intensity*.4);
-    addSpark(clashFx,clashFy,8+Math.floor(intensity*10));
-    playClash(intensity);
+// ═══════════════════════════════════════
+//  剑气残影
+// ═══════════════════════════════════════
+const TL=18;
+const trA=[],trB=[];
+for(let i=0;i<TL;i++){trA.push({x:-99,y:-99});trB.push({x:-99,y:-99});}
+function pushTrail(tr,x,y){tr.pop();tr.unshift({x,y});}
+function drawTrail(tr,hue){
+  ctx.lineCap='round';
+  for(let i=1;i<tr.length;i++){
+    if(tr[i].x<-50||tr[i-1].x<-50)continue;
+    const a=(1-i/tr.length);
+    ctx.globalAlpha=a*.15;
+    ctx.strokeStyle='hsla('+hue+',80%,70%,1)';
+    ctx.lineWidth=3-i*.15;
+    ctx.beginPath();ctx.moveTo(tr[i-1].x,tr[i-1].y);ctx.lineTo(tr[i].x,tr[i].y);ctx.stroke();
   }
-
-  // 软边界
-  const m=W*.12;
-  [sAs,sBs].forEach(s=>{
-    if(s.x<m)s.vx+=(m-s.x)*.15;if(s.x>W-m)s.vx+=(W-m-s.x)*.15;
-    if(s.y<m*.6)s.vy+=(m*.6-s.y)*.15;if(s.y>H-m*.6)s.vy+=(H-m*.6-s.y)*.15;
-  });
-
-  if(clashFlash>0)clashFlash*=.9;
+  ctx.globalAlpha=1;
 }
 
 // ═══════════════════════════════════════
@@ -383,7 +443,7 @@ function tick(){
   const dt=Math.min(.033,t-lastT||.016);lastT=t;
 
   if(t>=4.8&&!gatherDone){gatherDone=true;assignGatherTargets();}
-  if(t>=8.5&&!swordsInited){swordsInited=true;initSwords();}
+  if(t>=8.5&&!swordsInited){swordsInited=true;swordPhase='approach';phaseT=9;nextClash=0;}
 
   ctx.fillStyle='#080810';ctx.fillRect(0,0,W,H);
   drawBg();
@@ -433,20 +493,23 @@ function tick(){
   }
 
   // ─── 厮杀 9-20s ───
-  // 双剑始终绘制直到归无淡出完
   if(t>=8.5){
-    if(t<19.5)updateSwords(t,dt);
+    if(t<18.5)getSwordState(t);
 
     let sAlpha;
-    if(t<9.5)sAlpha=Math.min(1,(t-8.5)); // 淡入
-    else if(t<19)sAlpha=1; // 全亮
-    else if(t<21)sAlpha=Math.max(0,1-(t-19)/2); // 淡出
+    if(t<9.5)sAlpha=Math.min(1,(t-8.5));
+    else if(t<18)sAlpha=1;
+    else if(t<20)sAlpha=Math.max(0,1-(t-18)/2);
     else sAlpha=0;
 
     if(sAlpha>.01){
       if(zoomActive){ctx.save();ctx.translate(ccx,ccy);ctx.scale(zoom,zoom);ctx.translate(-ccx,-ccy);}
-      drawSword(swordA,sAs.x,sAs.y,sAs.angle,1,sAlpha);
-      drawSword(swordB,sBs.x,sBs.y,sBs.angle,1,sAlpha);
+      // 剑气残影
+      pushTrail(trA,sAs.x,sAs.y);pushTrail(trB,sBs.x,sBs.y);
+      drawTrail(trA,42);drawTrail(trB,210);
+      // 双剑（用碰撞表的scale缩放）
+      drawSword(swordA,sAs.x,sAs.y,sAs.angle,sAs.sc,sAlpha);
+      drawSword(swordB,sBs.x,sBs.y,sBs.angle,sBs.sc,sAlpha);
       if(zoomActive)ctx.restore();
     }
 
@@ -461,10 +524,10 @@ function tick(){
   }
 
   // ─── 归无 ───
-  if(t>19.5&&!finalBurst){
+  if(t>18&&!finalBurst){
     finalBurst=true;
-    spawnFall(W*.5,H*.43,200,1.6);
-    addSpark(W*.5,H*.43,40);
+    spawnFall(W*.5,H*.43,250,1.8);
+    addSpark(W*.5,H*.43,50);
     playBurst();
   }
 
@@ -491,8 +554,8 @@ function tick(){
   ctx.fillRect(0,0,40,H);ctx.fillRect(W-40,0,40,H);
 
   // 结语（归无后显示，与落字共存）
-  if(t>21){
-    const ea=Math.min(.45,(t-21)/3);
+  if(t>20){
+    const ea=Math.min(.45,(t-20)/3);
     ctx.save();ctx.globalAlpha=ea;ctx.textAlign='center';
     ctx.font='26px "Songti SC","SimSun","KaiTi",serif';
     ctx.fillStyle='rgba(200,180,120,1)';
