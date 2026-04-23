@@ -21,29 +21,28 @@ canvas{display:block}
 #playBtn .circle:hover{background:rgba(212,200,160,.08);border-color:rgba(212,200,160,.6)}
 #playBtn .tri{width:0;height:0;border-top:13px solid transparent;border-bottom:13px solid transparent;
   border-left:20px solid rgba(212,200,160,.65);margin-left:4px}
-#info{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(200,180,120,.4);
-  font:12px "Songti SC",serif;z-index:10;pointer-events:none;text-align:center;transition:opacity 1s}
 </style>
 </head>
 <body>
 <div id="playBtn"><div class="inner">
   <div class="title">本 命 字</div>
-  <div class="sub">千万经典 · 凝形厮杀 · 归于文字</div>
+  <div class="sub">千万经典 · 凝龙化虎 · 缠斗碎裂 · 归于文字</div>
   <div class="circle"><div class="tri"></div></div>
 </div></div>
-<div id="info"></div>
-<script type="importmap">{"imports":{"three":"https://esm.sh/three@0.162.0","three/addons/":"https://esm.sh/three@0.162.0/examples/jsm/"}}</script>
-<script type="module">
-import*as THREE from'three';
+<canvas id="c"></canvas>
+<script>
+const C=document.getElementById('c');
+const ctx=C.getContext('2d');
+let W=innerWidth,H=innerHeight;
+C.width=W;C.height=H;
 
 // ═══════════════════════════════════════
-//  经典文字库
+//  经典文字
 // ═══════════════════════════════════════
-const CLASSICS='学而时习之不亦说乎有朋自远方来不亦乐乎人不知而不愠不亦君子乎'+
+const TXT='学而时习之不亦说乎有朋自远方来不亦乐乎人不知而不愠不亦君子乎'+
 '吾日三省吾身为人谋而不忠乎与朋友交而不信乎传不习乎'+
 '温故而知新可以为师矣学而不思则罔思而不学则殆'+
 '己所不欲勿施于人君子坦荡荡小人长戚戚'+
-'士不可以不弘毅任重而道远仁以为己任死而后已不亦远乎'+
 '大学之道在明明德在亲民在止于至善'+
 '格物致知诚意正心修身齐家治国平天下'+
 '天命之谓性率性之谓道修道之谓教'+
@@ -52,726 +51,671 @@ const CLASSICS='学而时习之不亦说乎有朋自远方来不亦乐乎人不�
 '富贵不能淫贫贱不能移威武不能屈此之谓大丈夫'+
 '天行健君子以自强不息地势坤君子以厚德载物'+
 '人心惟危道心惟微惟精惟一允执厥中';
-const randChar=()=>CLASSICS[Math.floor(Math.random()*CLASSICS.length)];
+const rc=()=>TXT[Math.floor(Math.random()*TXT.length)];
 
 // ═══════════════════════════════════════
-//  文字纹理图集（预渲染64个字到一张大纹理）
+//  预渲染文字缓存
 // ═══════════════════════════════════════
-const ATLAS_SIZE=1024, CELL=64, COLS=ATLAS_SIZE/CELL;
-const atlasCanvas=document.createElement('canvas');
-atlasCanvas.width=atlasCanvas.height=ATLAS_SIZE;
-const atlasCtx=atlasCanvas.getContext('2d');
-atlasCtx.fillStyle='rgba(0,0,0,0)';
-atlasCtx.fillRect(0,0,ATLAS_SIZE,ATLAS_SIZE);
-atlasCtx.font='48px "Songti SC","SimSun","KaiTi",serif';
-atlasCtx.textAlign='center';atlasCtx.textBaseline='middle';
-const atlasChars=[];
-for(let i=0;i<COLS*COLS;i++){
-  const ch=randChar();
-  atlasChars.push(ch);
-  const col=i%COLS, row=Math.floor(i/COLS);
-  // 金色文字
-  atlasCtx.fillStyle=`hsl(${40+Math.random()*15},85%,${55+Math.random()*25}%)`;
-  atlasCtx.fillText(ch,col*CELL+CELL/2,row*CELL+CELL/2);
+const SIZES=[8,10,12,14,16];
+const cache=new Map();
+function getCC(ch,sz,h,l){
+  const k=ch+sz+h+l;
+  if(cache.has(k))return cache.get(k);
+  const c=document.createElement('canvas');
+  const s=sz*2.5;c.width=s;c.height=s;
+  const x=c.getContext('2d');
+  x.font=`${sz}px "Songti SC","SimSun","KaiTi",serif`;
+  x.textAlign='center';x.textBaseline='middle';
+  x.fillStyle=`hsl(${h},80%,${l}%)`;
+  x.fillText(ch,s/2,s/2);
+  cache.set(k,c);return c;
+}
+// 预热
+for(let i=0;i<TXT.length;i++){
+  SIZES.forEach(s=>{ getCC(TXT[i],s,42,65); getCC(TXT[i],s,30,55); });
 }
 
 // ═══════════════════════════════════════
-//  Three.js 场景
+//  龙轮廓（手绘贝塞尔 — 中国水墨龙）
+//  以 0-1 归一化坐标定义，运行时缩放
+//  龙身蜿蜒成 S 形，头在右上，尾在左下
 // ═══════════════════════════════════════
-const scene=new THREE.Scene();
-scene.fog=new THREE.FogExp2(0x080810,.0008);
-const camera=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.1,2000);
-camera.position.set(0,20,180);
-camera.lookAt(0,0,0);
+function drawDragonPath(ctx,ox,oy,w,h,t){
+  // 动态偏移（呼吸+游动）
+  const b=Math.sin(t*1.2)*3;
+  const sw=Math.sin(t*0.8)*5; // 游动
+  ctx.beginPath();
+  // === 龙身外轮廓（上侧，从尾到头）===
+  // 尾尖
+  ctx.moveTo(ox+w*.02+sw, oy+h*.65+b);
+  // 尾→第一个弯（上升）
+  ctx.bezierCurveTo(
+    ox+w*.08+sw,oy+h*.58+b, ox+w*.14+sw*.8,oy+h*.48+b, ox+w*.2+sw*.6,oy+h*.42+b
+  );
+  // 第一弯顶部→第二个弯（下降）
+  ctx.bezierCurveTo(
+    ox+w*.28+sw*.4,oy+h*.35+b, ox+w*.36+sw*.2,oy+h*.45+b, ox+w*.42,oy+h*.52+b
+  );
+  // 第二弯底部→第三个弯（上升，龙身最粗处）
+  ctx.bezierCurveTo(
+    ox+w*.48,oy+h*.58+b, ox+w*.54,oy+h*.48+b, ox+w*.6,oy+h*.38+b
+  );
+  // 颈部（收细上扬）
+  ctx.bezierCurveTo(
+    ox+w*.66,oy+h*.28+b, ox+w*.72,oy+h*.18+b, ox+w*.76,oy+h*.12+b
+  );
+  // 龙头上缘（膨大）
+  ctx.bezierCurveTo(
+    ox+w*.79,oy+h*.08+b, ox+w*.84,oy+h*.06+b, ox+w*.88,oy+h*.08+b
+  );
+  // 龙头前端（口鼻）
+  ctx.bezierCurveTo(
+    ox+w*.92,oy+h*.10+b, ox+w*.96,oy+h*.14+b, ox+w*.98,oy+h*.18+b
+  );
+  // === 龙头下颌 → 龙身下侧（从头回到尾）===
+  // 下颌
+  ctx.bezierCurveTo(
+    ox+w*.95,oy+h*.22+b, ox+w*.90,oy+h*.24+b, ox+w*.84,oy+h*.20+b
+  );
+  // 颈部下侧
+  ctx.bezierCurveTo(
+    ox+w*.78,oy+h*.24+b, ox+w*.72,oy+h*.30+b, ox+w*.66,oy+h*.38+b
+  );
+  // 身体下侧（腹部，比上侧略低→体积感）
+  ctx.bezierCurveTo(
+    ox+w*.60,oy+h*.48+b, ox+w*.54,oy+h*.60+b, ox+w*.48,oy+h*.64+b
+  );
+  ctx.bezierCurveTo(
+    ox+w*.42,oy+h*.62+b, ox+w*.36,oy+h*.56+b, ox+w*.28,oy+h*.48+b
+  );
+  ctx.bezierCurveTo(
+    ox+w*.20,oy+h*.52+b, ox+w*.14+sw*.5,oy+h*.62+b, ox+w*.08+sw*.8,oy+h*.68+b
+  );
+  // 回到尾尖
+  ctx.bezierCurveTo(
+    ox+w*.05+sw,oy+h*.70+b, ox+w*.03+sw,oy+h*.67+b, ox+w*.02+sw,oy+h*.65+b
+  );
+  ctx.closePath();
 
-const renderer=new THREE.WebGLRenderer({antialias:false,alpha:false});
-renderer.setSize(innerWidth,innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setClearColor(0x080810);
-document.body.appendChild(renderer.domElement);
+  // === 龙角（两根，从头顶伸出）===
+  // 左角
+  ctx.moveTo(ox+w*.80,oy+h*.10+b);
+  ctx.bezierCurveTo(ox+w*.78,oy+h*.02+b,ox+w*.75,oy-h*.03+b,ox+w*.72,oy-h*.02+b);
+  ctx.bezierCurveTo(ox+w*.74,oy+h*.01+b,ox+w*.77,oy+h*.05+b,ox+w*.80,oy+h*.10+b);
+  // 右角
+  ctx.moveTo(ox+w*.84,oy+h*.08+b);
+  ctx.bezierCurveTo(ox+w*.86,oy+h*.0+b,ox+w*.88,oy-h*.04+b,ox+w*.90,oy-h*.02+b);
+  ctx.bezierCurveTo(ox+w*.88,oy+h*.02+b,ox+w*.86,oy+h*.05+b,ox+w*.84,oy+h*.08+b);
 
-// 光照
-const ambLight=new THREE.AmbientLight(0x1a1520,.5);scene.add(ambLight);
-const dirLight=new THREE.DirectionalLight(0xffe0a0,.8);
-dirLight.position.set(5,10,8);scene.add(dirLight);
+  // === 龙须（两条，从口鼻下飘出）===
+  ctx.moveTo(ox+w*.95,oy+h*.18+b);
+  ctx.bezierCurveTo(ox+w*.98,oy+h*.25+b,ox+w*1.02,oy+h*.30+b,ox+w*.99,oy+h*.36+b);
+  ctx.moveTo(ox+w*.96,oy+h*.20+b);
+  ctx.bezierCurveTo(ox+w*1.0,oy+h*.28+b,ox+w*1.04,oy+h*.34+b,ox+w*1.02,oy+h*.40+b);
 
-// ═══════════════════════════════════════
-//  程序化龙模型（蛇身+头+角+须+爪）
-// ═══════════════════════════════════════
-function createDragonGeometry(){
-  const path=new THREE.CurvePath();
-  // 蜿蜒S形脊椎（用CatmullRom曲线）
-  const spinePoints=[
-    new THREE.Vector3(-80,0,0),
-    new THREE.Vector3(-55,12,8),
-    new THREE.Vector3(-30,-5,-6),
-    new THREE.Vector3(-5,15,10),
-    new THREE.Vector3(20,-8,-5),
-    new THREE.Vector3(45,10,8),
-    new THREE.Vector3(60,25,3),   // 颈部上扬
-    new THREE.Vector3(70,40,-2),  // 头部高昂
-    new THREE.Vector3(75,48,0),   // 鼻尖
-  ];
-  const spine=new THREE.CatmullRomCurve3(spinePoints);
-
-  // 沿脊椎生成管状几何体（变截面）
-  const segments=120, radialSeg=12;
-  const frames=spine.computeFrenetFrames(segments,false);
-  const positions=[],uvs=[],indices=[];
-
-  for(let i=0;i<=segments;i++){
-    const t=i/segments;
-    const pt=spine.getPointAt(t);
-    const N=frames.normals[i];
-    const B=frames.binormals[i];
-    // 截面半径变化：尾细→身粗→颈细→头大
-    let radius;
-    if(t<.05) radius=t/.05*1.5;         // 尾尖
-    else if(t<.15) radius=1.5+((t-.05)/.1)*3; // 尾→身
-    else if(t<.7) radius=4.5+Math.sin((t-.15)/.55*Math.PI)*.8; // 身干
-    else if(t<.82) radius=4.5-((t-.7)/.12)*2; // 身→颈
-    else if(t<.9) radius=2.5;            // 颈
-    else radius=2.5+Math.sin((t-.9)/.1*Math.PI)*2.5; // 头
-    // 龙鳞锯齿（沿背脊微凸）
-    for(let j=0;j<=radialSeg;j++){
-      const a=(j/radialSeg)*Math.PI*2;
-      let r=radius;
-      // 背脊凸起
-      if(a>Math.PI*.35&&a<Math.PI*.65) r+=.8;
-      // 腹部稍平
-      if(a>Math.PI*1.3&&a<Math.PI*1.7) r*=.85;
-      const x=pt.x+N.x*Math.cos(a)*r+B.x*Math.sin(a)*r;
-      const y=pt.y+N.y*Math.cos(a)*r+B.y*Math.sin(a)*r;
-      const z=pt.z+N.z*Math.cos(a)*r+B.z*Math.sin(a)*r;
-      positions.push(x,y,z);
-      uvs.push(j/radialSeg,t);
-    }
-  }
-  // 面索引
-  for(let i=0;i<segments;i++){
-    for(let j=0;j<radialSeg;j++){
-      const a=i*(radialSeg+1)+j;
-      const b=a+radialSeg+1;
-      indices.push(a,b,a+1, b,b+1,a+1);
-    }
-  }
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-
-  // 附加部件：角、须、爪（简化为细管）
-  const parts=[geo];
-
-  // 鹿角（两根，从头部Y轴上方分叉）
-  const headPt=spine.getPointAt(.92);
-  for(let side=-1;side<=1;side+=2){
-    const hornPts=[
-      new THREE.Vector3(headPt.x+side*2,headPt.y+3,headPt.z),
-      new THREE.Vector3(headPt.x+side*5,headPt.y+12,headPt.z-2),
-      new THREE.Vector3(headPt.x+side*7,headPt.y+18,headPt.z+1),
-      new THREE.Vector3(headPt.x+side*6,headPt.y+22,headPt.z-1),
-    ];
-    const hornCurve=new THREE.CatmullRomCurve3(hornPts);
-    const hornGeo=new THREE.TubeGeometry(hornCurve,12,0.6,6,false);
-    parts.push(hornGeo);
-    // 分叉
-    const branchPts=[
-      hornPts[1].clone(),
-      new THREE.Vector3(headPt.x+side*9,headPt.y+16,headPt.z+side*3),
-      new THREE.Vector3(headPt.x+side*10,headPt.y+19,headPt.z+side*2),
-    ];
-    const branchCurve=new THREE.CatmullRomCurve3(branchPts);
-    parts.push(new THREE.TubeGeometry(branchCurve,8,.4,5,false));
-  }
-
-  // 龙须（两条，从口鼻下方飘出）
-  const nosePt=spine.getPointAt(.98);
-  for(let side=-1;side<=1;side+=2){
-    const whiskerPts=[
-      new THREE.Vector3(nosePt.x+side*1.5,nosePt.y-1,nosePt.z),
-      new THREE.Vector3(nosePt.x+side*4,nosePt.y-4,nosePt.z+side*5),
-      new THREE.Vector3(nosePt.x+side*3,nosePt.y-8,nosePt.z+side*10),
-      new THREE.Vector3(nosePt.x+side*5,nosePt.y-6,nosePt.z+side*15),
-    ];
-    const wCurve=new THREE.CatmullRomCurve3(whiskerPts);
-    parts.push(new THREE.TubeGeometry(wCurve,10,.25,4,false));
-  }
-
-  // 四爪
-  const clawTs=[.25,.4,.55,.65];
-  clawTs.forEach(ct=>{
-    const cp=spine.getPointAt(ct);
-    for(let side=-1;side<=1;side+=2){
-      const clawPts=[
-        new THREE.Vector3(cp.x,cp.y-3,cp.z+side*4),
-        new THREE.Vector3(cp.x+2,cp.y-10,cp.z+side*7),
-        new THREE.Vector3(cp.x+1,cp.y-14,cp.z+side*6),
-      ];
-      const cCurve=new THREE.CatmullRomCurve3(clawPts);
-      parts.push(new THREE.TubeGeometry(cCurve,6,.5,4,false));
-      // 三趾
-      const tip=clawPts[2];
-      for(let f=-1;f<=1;f++){
-        const toePts=[
-          tip.clone(),
-          new THREE.Vector3(tip.x+f*1.5,tip.y-3,tip.z+f*side),
-        ];
-        const toeCurve=new THREE.CatmullRomCurve3(toePts);
-        parts.push(new THREE.TubeGeometry(toeCurve,3,.2,3,false));
-      }
-    }
-  });
-
-  // 合并所有部件
-  return mergeGeometries(parts);
-}
-
-function mergeGeometries(geos){
-  // 简单合并：统一到一个大 BufferGeometry
-  let totalV=0,totalI=0;
-  geos.forEach(g=>{
-    totalV+=g.attributes.position.count;
-    totalI+=g.index?g.index.count:(g.attributes.position.count);
-  });
-  const pos=new Float32Array(totalV*3);
-  const norm=new Float32Array(totalV*3);
-  const uv=new Float32Array(totalV*2);
-  const idx=new Uint32Array(totalI);
-  let vOff=0,iOff=0,vCount=0;
-  geos.forEach(g=>{
-    const p=g.attributes.position.array;
-    const n=g.attributes.normal?g.attributes.normal.array:new Float32Array(p.length);
-    const u=g.attributes.uv?g.attributes.uv.array:new Float32Array(p.length/3*2);
-    pos.set(p,vOff*3);
-    norm.set(n,vOff*3);
-    uv.set(u,vOff*2);
-    if(g.index){
-      const gi=g.index.array;
-      for(let i=0;i<gi.length;i++) idx[iOff+i]=gi[i]+vCount;
-      iOff+=gi.length;
-    }else{
-      for(let i=0;i<p.length/3;i++) idx[iOff+i]=vCount+i;
-      iOff+=p.length/3;
-    }
-    vCount+=p.length/3;
-    vOff=vCount;
-  });
-  const merged=new THREE.BufferGeometry();
-  merged.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  merged.setAttribute('normal',new THREE.Float32BufferAttribute(norm,3));
-  merged.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  merged.setIndex(new THREE.BufferAttribute(new Uint32Array(idx.buffer,0,iOff),1));
-  return merged;
-}
-
-// ═══════════════════════════════════════
-//  程序化虎模型
-// ═══════════════════════════════════════
-function createTigerGeometry(){
-  // 虎身主轴
-  const spinePoints=[
-    new THREE.Vector3(50,-5,0),    // 尾根
-    new THREE.Vector3(35,-2,0),    // 臀
-    new THREE.Vector3(15,2,0),     // 腰
-    new THREE.Vector3(-5,5,0),     // 背
-    new THREE.Vector3(-25,8,0),    // 肩
-    new THREE.Vector3(-40,12,0),   // 颈
-    new THREE.Vector3(-50,18,0),   // 头
-    new THREE.Vector3(-55,20,0),   // 口鼻
-  ];
-  const spine=new THREE.CatmullRomCurve3(spinePoints);
-  const segments=80,radialSeg=10;
-  const frames=spine.computeFrenetFrames(segments,false);
-  const positions=[],uvs=[],indices=[];
-
-  for(let i=0;i<=segments;i++){
-    const t=i/segments;
-    const pt=spine.getPointAt(t);
-    const N=frames.normals[i];
-    const B=frames.binormals[i];
-    let radius;
-    if(t<.1) radius=3+t/.1*3;         // 臀渐粗
-    else if(t<.3) radius=6+Math.sin((t-.1)/.2*Math.PI)*.5; // 臀最粗
-    else if(t<.55) radius=5.5;         // 腰腹
-    else if(t<.75) radius=5.5+Math.sin((t-.55)/.2*Math.PI)*1; // 肩胸
-    else if(t<.85) radius=5-((t-.75)/.1)*2; // 颈收
-    else radius=3+Math.sin((t-.85)/.15*Math.PI)*2; // 头
-    for(let j=0;j<=radialSeg;j++){
-      const a=(j/radialSeg)*Math.PI*2;
-      let r=radius;
-      // 背脊微凸
-      if(a>Math.PI*.4&&a<Math.PI*.6) r+=.4;
-      // 腹部平
-      if(a>Math.PI*1.3&&a<Math.PI*1.7) r*=.8;
-      const x=pt.x+N.x*Math.cos(a)*r+B.x*Math.sin(a)*r;
-      const y=pt.y+N.y*Math.cos(a)*r+B.y*Math.sin(a)*r;
-      const z=pt.z+N.z*Math.cos(a)*r+B.z*Math.sin(a)*r;
-      positions.push(x,y,z);
-      uvs.push(j/radialSeg,t);
-    }
-  }
-  for(let i=0;i<segments;i++){
-    for(let j=0;j<radialSeg;j++){
-      const a=i*(radialSeg+1)+j;
-      const b=a+radialSeg+1;
-      indices.push(a,b,a+1,b,b+1,a+1);
-    }
-  }
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
-  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-
-  const parts=[geo];
-
-  // 尾巴（上翘S弯）
-  const tailPts=[
-    spinePoints[0].clone(),
-    new THREE.Vector3(60,-2,3),
-    new THREE.Vector3(70,5,0),
-    new THREE.Vector3(72,12,-2),
-    new THREE.Vector3(68,18,1),
-  ];
-  parts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(tailPts),15,1,5,false));
-
-  // 四肢（粗壮）
-  const legs=[
-    {base:.15,side:1,angle:Math.PI/2+.2,len:18},  // 后右
-    {base:.15,side:-1,angle:Math.PI/2+.2,len:18}, // 后左
-    {base:.7,side:1,angle:Math.PI/2-.3,len:20},   // 前右（前伸）
-    {base:.7,side:-1,angle:Math.PI/2-.3,len:20},  // 前左
-  ];
-  legs.forEach(leg=>{
-    const bp=spine.getPointAt(leg.base);
-    const legPts=[
-      new THREE.Vector3(bp.x,bp.y-3,bp.z+leg.side*5),
-      new THREE.Vector3(bp.x+(leg.base>.5?-5:3),bp.y-12,bp.z+leg.side*7),
-      new THREE.Vector3(bp.x+(leg.base>.5?-8:2),bp.y-18,bp.z+leg.side*6),
-    ];
-    const lCurve=new THREE.CatmullRomCurve3(legPts);
-    parts.push(new THREE.TubeGeometry(lCurve,8,1.2,5,false));
-    // 爪
-    const tip=legPts[2];
+  // === 龙爪（四只，从身体下方伸出）===
+  const clawXs=[.22,.38,.52,.64];
+  clawXs.forEach(cx=>{
+    const cy=cx<.4?.55:.54;
+    ctx.moveTo(ox+w*cx,oy+h*(cy+.05)+b);
+    ctx.bezierCurveTo(ox+w*(cx-.02),oy+h*(cy+.12)+b,ox+w*(cx+.01),oy+h*(cy+.18)+b,ox+w*(cx-.01),oy+h*(cy+.22)+b);
+    // 三趾
     for(let f=-1;f<=1;f++){
-      const tp=[tip.clone(),new THREE.Vector3(tip.x+f*1.2+(leg.base>.5?-2:1),tip.y-3,tip.z+f*leg.side)];
-      parts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(tp),3,.3,3,false));
+      ctx.moveTo(ox+w*(cx-.01),oy+h*(cy+.22)+b);
+      ctx.lineTo(ox+w*(cx-.01+f*.015),oy+h*(cy+.25)+b);
     }
   });
-
-  // 耳朵
-  const headPt=spine.getPointAt(.92);
-  for(let side=-1;side<=1;side+=2){
-    const earPts=[
-      new THREE.Vector3(headPt.x-1,headPt.y+4,headPt.z+side*3),
-      new THREE.Vector3(headPt.x-2,headPt.y+9,headPt.z+side*4),
-      new THREE.Vector3(headPt.x-1,headPt.y+11,headPt.z+side*3),
-    ];
-    parts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(earPts),5,.6,4,false));
-  }
-
-  return mergeGeometries(parts);
 }
 
 // ═══════════════════════════════════════
-//  从3D模型表面采样点
+//  虎轮廓（手绘 — 水墨猛虎扑击姿态）
 // ═══════════════════════════════════════
-function sampleSurface(geometry,count){
-  const pos=geometry.attributes.position;
-  const idx=geometry.index;
+function drawTigerPath(ctx,ox,oy,w,h,t){
+  const b=Math.sin(t*1.5+1)*3;
+  ctx.beginPath();
+  // === 虎身上侧（从尾到头）===
+  // 尾尖（上翘）
+  ctx.moveTo(ox+w*.98, oy+h*.25+b);
+  ctx.bezierCurveTo(ox+w*.95,oy+h*.20+b, ox+w*.92,oy+h*.28+b, ox+w*.88,oy+h*.35+b);
+  // 臀部（隆起）
+  ctx.bezierCurveTo(ox+w*.82,oy+h*.32+b, ox+w*.76,oy+h*.28+b, ox+w*.70,oy+h*.30+b);
+  // 背部
+  ctx.bezierCurveTo(ox+w*.60,oy+h*.28+b, ox+w*.50,oy+h*.26+b, ox+w*.40,oy+h*.25+b);
+  // 肩部（隆起）
+  ctx.bezierCurveTo(ox+w*.32,oy+h*.22+b, ox+w*.26,oy+h*.18+b, ox+w*.22,oy+h*.20+b);
+  // 颈部
+  ctx.bezierCurveTo(ox+w*.18,oy+h*.22+b, ox+w*.14,oy+h*.20+b, ox+w*.12,oy+h*.16+b);
+  // 头顶
+  ctx.bezierCurveTo(ox+w*.10,oy+h*.12+b, ox+w*.06,oy+h*.10+b, ox+w*.04,oy+h*.14+b);
+  // 口鼻（张口咆哮）
+  ctx.bezierCurveTo(ox+w*.02,oy+h*.18+b, ox+w*.01,oy+h*.22+b, ox+w*.02,oy+h*.26+b);
+
+  // === 虎下颌 → 身体下侧 ===
+  // 下颌（张开→口腔）
+  ctx.bezierCurveTo(ox+w*.04,oy+h*.30+b, ox+w*.08,oy+h*.32+b, ox+w*.12,oy+h*.28+b);
+  // 胸部
+  ctx.bezierCurveTo(ox+w*.16,oy+h*.32+b, ox+w*.20,oy+h*.38+b, ox+w*.24,oy+h*.40+b);
+  // 腹部
+  ctx.bezierCurveTo(ox+w*.34,oy+h*.42+b, ox+w*.50,oy+h*.44+b, ox+w*.62,oy+h*.42+b);
+  // 后腹→臀
+  ctx.bezierCurveTo(ox+w*.72,oy+h*.40+b, ox+w*.80,oy+h*.42+b, ox+w*.86,oy+h*.40+b);
+  // 尾根
+  ctx.bezierCurveTo(ox+w*.90,oy+h*.38+b, ox+w*.94,oy+h*.32+b, ox+w*.98,oy+h*.25+b);
+  ctx.closePath();
+
+  // === 耳朵 ===
+  ctx.moveTo(ox+w*.08,oy+h*.12+b);
+  ctx.bezierCurveTo(ox+w*.07,oy+h*.04+b,ox+w*.06,oy+h*.02+b,ox+w*.05,oy+h*.06+b);
+  ctx.lineTo(ox+w*.07,oy+h*.10+b);
+  ctx.moveTo(ox+w*.11,oy+h*.12+b);
+  ctx.bezierCurveTo(ox+w*.12,oy+h*.04+b,ox+w*.13,oy+h*.02+b,ox+w*.14,oy+h*.06+b);
+  ctx.lineTo(ox+w*.12,oy+h*.10+b);
+
+  // === 前腿（扑击前伸）===
+  ctx.moveTo(ox+w*.20,oy+h*.38+b);
+  ctx.bezierCurveTo(ox+w*.16,oy+h*.50+b,ox+w*.10,oy+h*.60+b,ox+w*.06,oy+h*.68+b);
+  ctx.bezierCurveTo(ox+w*.05,oy+h*.70+b,ox+w*.04,oy+h*.72+b,ox+w*.03,oy+h*.70+b);
+  ctx.moveTo(ox+w*.06,oy+h*.68+b);
+  ctx.lineTo(ox+w*.04,oy+h*.72+b);
+  ctx.moveTo(ox+w*.06,oy+h*.68+b);
+  ctx.lineTo(ox+w*.07,oy+h*.72+b);
+  // 第二前腿
+  ctx.moveTo(ox+w*.26,oy+h*.40+b);
+  ctx.bezierCurveTo(ox+w*.22,oy+h*.52+b,ox+w*.18,oy+h*.62+b,ox+w*.14,oy+h*.70+b);
+  ctx.lineTo(ox+w*.12,oy+h*.73+b);
+  ctx.moveTo(ox+w*.14,oy+h*.70+b);
+  ctx.lineTo(ox+w*.15,oy+h*.73+b);
+
+  // === 后腿（蹬地）===
+  ctx.moveTo(ox+w*.72,oy+h*.40+b);
+  ctx.bezierCurveTo(ox+w*.70,oy+h*.52+b,ox+w*.68,oy+h*.62+b,ox+w*.66,oy+h*.70+b);
+  ctx.lineTo(ox+w*.64,oy+h*.73+b);
+  ctx.moveTo(ox+w*.66,oy+h*.70+b);
+  ctx.lineTo(ox+w*.67,oy+h*.73+b);
+  ctx.moveTo(ox+w*.80,oy+h*.42+b);
+  ctx.bezierCurveTo(ox+w*.78,oy+h*.54+b,ox+w*.76,oy+h*.64+b,ox+w*.74,oy+h*.70+b);
+  ctx.lineTo(ox+w*.72,oy+h*.73+b);
+  ctx.moveTo(ox+w*.74,oy+h*.70+b);
+  ctx.lineTo(ox+w*.75,oy+h*.73+b);
+
+  // === 虎斑纹（几道弧线）===
+  for(let i=0;i<5;i++){
+    const sx=.30+i*.10;
+    ctx.moveTo(ox+w*sx,oy+h*.28+b);
+    ctx.bezierCurveTo(ox+w*(sx+.02),oy+h*.32+b,ox+w*(sx+.01),oy+h*.36+b,ox+w*(sx-.01),oy+h*.38+b);
+  }
+}
+
+// ═══════════════════════════════════════
+//  从轮廓区域内采样点
+// ═══════════════════════════════════════
+// 在离屏canvas上画轮廓，然后随机撒点判断是否在内部
+function sampleInsidePath(drawFn,ox,oy,w,h,count){
+  const oc=document.createElement('canvas');
+  oc.width=Math.ceil(w+40);oc.height=Math.ceil(h+40);
+  const ox2=oc.getContext('2d');
+  drawFn(ox2,20-ox,20-oy,w,h,0);
+  ox2.fillStyle='#fff';ox2.fill();
+  const imgData=ox2.getImageData(0,0,oc.width,oc.height);
+  const d=imgData.data;
   const pts=[];
-  const triCount=idx?idx.count/3:pos.count/3;
-  for(let i=0;i<count;i++){
-    const triIdx=Math.floor(Math.random()*triCount);
-    let a,b,c;
-    if(idx){
-      a=idx.getX(triIdx*3);b=idx.getX(triIdx*3+1);c=idx.getX(triIdx*3+2);
-    }else{a=triIdx*3;b=triIdx*3+1;c=triIdx*3+2;}
-    const va=new THREE.Vector3().fromBufferAttribute(pos,a);
-    const vb=new THREE.Vector3().fromBufferAttribute(pos,b);
-    const vc=new THREE.Vector3().fromBufferAttribute(pos,c);
-    // 随机重心坐标
-    let u=Math.random(),v=Math.random();
-    if(u+v>1){u=1-u;v=1-v;}
-    const w=1-u-v;
-    pts.push(new THREE.Vector3(
-      va.x*u+vb.x*v+vc.x*w,
-      va.y*u+vb.y*v+vc.y*w,
-      va.z*u+vb.z*v+vc.z*w
-    ));
+  let tries=0;
+  while(pts.length<count&&tries<count*20){
+    tries++;
+    const px=Math.random()*oc.width;
+    const py=Math.random()*oc.height;
+    const idx=(Math.floor(py)*oc.width+Math.floor(px))*4;
+    if(d[idx+3]>128){ // 在轮廓内
+      pts.push({x:px-20+ox, y:py-20+oy});
+    }
   }
   return pts;
 }
 
 // ═══════════════════════════════════════
-//  创建模型 & 采样
+//  粒子
 // ═══════════════════════════════════════
-const dragonGeo=createDragonGeometry();
-const tigerGeo=createTigerGeometry();
+const TOTAL=1800;
+const px=new Float32Array(TOTAL);
+const py=new Float32Array(TOTAL);
+const pvx=new Float32Array(TOTAL);
+const pvy=new Float32Array(TOTAL);
+const ptx=new Float32Array(TOTAL); // 目标
+const pty=new Float32Array(TOTAL);
+const psz=new Uint8Array(TOTAL);
+const palpha=new Float32Array(TOTAL);
+const pglow=new Float32Array(TOTAL);
+const pstate=new Uint8Array(TOTAL); // 0rain 1gather 2form 3clash 4scatter 5fall
+const pside=new Uint8Array(TOTAL); // 0=龙 1=虎
+const pchar=new Array(TOTAL);
+const pcache=new Array(TOTAL);
+const prot=new Float32Array(TOTAL);
+const protv=new Float32Array(TOTAL);
+const pph=new Float32Array(TOTAL);
 
-const PARTICLE_COUNT=1200;
-const dragonSurfacePts=sampleSurface(dragonGeo,PARTICLE_COUNT);
-const tigerSurfacePts=sampleSurface(tigerGeo,PARTICLE_COUNT);
+function initParticles(){
+  for(let i=0;i<TOTAL;i++){
+    px[i]=Math.random()*W;
+    py[i]=-Math.random()*H*2.5;
+    pvx[i]=(Math.random()-.5)*.5;
+    pvy[i]=1.5+Math.random()*3.5;
+    const sz=SIZES[Math.floor(Math.random()*SIZES.length)];
+    psz[i]=sz;
+    palpha[i]=.12+Math.random()*.35;
+    pglow[i]=0;
+    pstate[i]=0;
+    pside[i]=i<TOTAL/2?0:1;
+    pchar[i]=rc();
+    const hue=pside[i]===0?42:30;
+    const lit=55+Math.floor(Math.random()*25);
+    pcache[i]=getCC(pchar[i],sz,hue,lit);
+    prot[i]=(Math.random()-.5)*.3;
+    protv[i]=(Math.random()-.5)*.015;
+    pph[i]=Math.random()*Math.PI*2;
+  }
+}
+initParticles();
+
+// 龙虎布局参数
+let dragonRect,tigerRect;
+function calcLayout(){
+  const s=Math.min(W,H);
+  const dw=s*.55, dh=s*.45;
+  // 龙在左上
+  dragonRect={x:W*.05, y:H*.08, w:dw, h:dh};
+  // 虎在右下（面向左）
+  tigerRect={x:W*.95-dw, y:H*.92-dh*.85, w:dw, h:dh*.75};
+}
+calcLayout();
+
+// 采样目标点
+let dragonPts=[],tigerPts=[];
+function resample(){
+  calcLayout();
+  const dr=dragonRect,tr=tigerRect;
+  dragonPts=sampleInsidePath(drawDragonPath,dr.x,dr.y,dr.w,dr.h,TOTAL/2);
+  tigerPts=sampleInsidePath(drawTigerPath,tr.x,tr.y,tr.w,tr.h,TOTAL/2);
+  // 分配目标
+  for(let i=0;i<TOTAL;i++){
+    if(pside[i]===0){
+      const p=dragonPts[i%dragonPts.length];
+      ptx[i]=p.x; pty[i]=p.y;
+    }else{
+      const p=tigerPts[(i-TOTAL/2)%tigerPts.length];
+      ptx[i]=p.x; pty[i]=p.y;
+    }
+  }
+}
+resample();
 
 // ═══════════════════════════════════════
-//  文字粒子（InstancedMesh 方案用 Sprite）
-//  用 Points + 自定义 ShaderMaterial
+//  状态切换
 // ═══════════════════════════════════════
-const TOTAL=PARTICLE_COUNT*2;
-const atlasTexture=new THREE.CanvasTexture(atlasCanvas);
-atlasTexture.minFilter=THREE.LinearFilter;
-
-// 自定义着色器：每个点是一个带文字纹理的方块
-const pointGeo=new THREE.BufferGeometry();
-const posArr=new Float32Array(TOTAL*3);
-const targetArr=new Float32Array(TOTAL*3);
-const uvOffsetArr=new Float32Array(TOTAL*2); // 图集UV偏移
-const sideArr=new Float32Array(TOTAL); // 0=dragon 1=tiger
-const randArr=new Float32Array(TOTAL); // 随机种子
-
-for(let i=0;i<TOTAL;i++){
-  // 初始位置：散落在空中
-  posArr[i*3]=(Math.random()-.5)*300;
-  posArr[i*3+1]=Math.random()*200+50;
-  posArr[i*3+2]=(Math.random()-.5)*100;
-  // 图集UV
-  const charIdx=Math.floor(Math.random()*COLS*COLS);
-  uvOffsetArr[i*2]=(charIdx%COLS)/COLS;
-  uvOffsetArr[i*2+1]=Math.floor(charIdx/COLS)/COLS;
-  sideArr[i]=i<PARTICLE_COUNT?0:1;
-  randArr[i]=Math.random();
-  // 目标位置
-  const pts=i<PARTICLE_COUNT?dragonSurfacePts:tigerSurfacePts;
-  const pi=i<PARTICLE_COUNT?i:i-PARTICLE_COUNT;
-  const tp=pts[pi];
-  // 龙偏左，虎偏右
-  if(i<PARTICLE_COUNT){
-    targetArr[i*3]=tp.x-40;targetArr[i*3+1]=tp.y;targetArr[i*3+2]=tp.z;
-  }else{
-    targetArr[i*3]=tp.x+40;targetArr[i*3+1]=tp.y;targetArr[i*3+2]=tp.z;
+function setRain(){
+  for(let i=0;i<TOTAL;i++){
+    pstate[i]=0;
+    px[i]=Math.random()*W;
+    py[i]=-20-Math.random()*H*1.5;
+    pvx[i]=(Math.random()-.5)*.4;
+    pvy[i]=1.5+Math.random()*3;
+    palpha[i]=.1+Math.random()*.35;
+    pglow[i]=0;
   }
 }
 
-pointGeo.setAttribute('position',new THREE.BufferAttribute(posArr,3));
-pointGeo.setAttribute('aTarget',new THREE.BufferAttribute(targetArr,3));
-pointGeo.setAttribute('aUvOffset',new THREE.BufferAttribute(uvOffsetArr,2));
-pointGeo.setAttribute('aSide',new THREE.BufferAttribute(sideArr,1));
-pointGeo.setAttribute('aRand',new THREE.BufferAttribute(randArr,1));
+function setGather(){
+  resample();
+  for(let i=0;i<TOTAL;i++){ pstate[i]=1; pglow[i]=0; }
+}
 
-const pointMat=new THREE.ShaderMaterial({
-  uniforms:{
-    uTime:{value:0},
-    uPhase:{value:0}, // 0=rain 1=gather 2=form 3=clash 4=fall
-    uAtlas:{value:atlasTexture},
-    uCellSize:{value:1.0/COLS},
-    uPointSize:{value:Math.min(innerWidth,innerHeight)*.035},
-  },
-  vertexShader:`
-    attribute vec3 aTarget;
-    attribute vec2 aUvOffset;
-    attribute float aSide;
-    attribute float aRand;
-    uniform float uTime;
-    uniform float uPhase;
-    uniform float uPointSize;
-    varying vec2 vUvOffset;
-    varying float vAlpha;
-    varying float vGlow;
-    varying float vSide;
+function setForm(){
+  for(let i=0;i<TOTAL;i++){ pstate[i]=2; }
+}
 
-    // 噪声
-    float hash(float n){return fract(sin(n)*43758.5453);}
+function setClash(){
+  // 龙虎对冲：龙粒子往右冲，虎粒子往左冲
+  const cx=W*.5, cy=H*.45;
+  for(let i=0;i<TOTAL;i++){
+    pstate[i]=3;
+    const dx=cx-px[i], dy=cy-py[i];
+    const dist=Math.hypot(dx,dy)+1;
+    pvx[i]=dx/dist*6+(Math.random()-.5)*2;
+    pvy[i]=dy/dist*4+(Math.random()-.5)*2;
+    pglow[i]=1;
+  }
+}
 
-    void main(){
-      vUvOffset=aUvOffset;
-      vSide=aSide;
-      vec3 pos=position;
-      vec3 tgt=aTarget;
-      float t=uTime;
-      float r=aRand;
+function setScatter(){
+  for(let i=0;i<TOTAL;i++){
+    pstate[i]=4;
+    const a=Math.random()*Math.PI*2;
+    const s=3+Math.random()*8;
+    pvx[i]=Math.cos(a)*s;
+    pvy[i]=Math.sin(a)*s;
+    pglow[i]=.8;
+  }
+}
 
-      if(uPhase<0.5){
-        // rain：从上方飘落
-        pos.y=mod(position.y-t*15.0*(0.5+r),300.0)+50.0;
-        pos.x+=sin(t*0.5+r*6.28)*2.0;
-        pos.z+=cos(t*0.3+r*3.14)*1.5;
-        vAlpha=0.3+r*0.4;
-        vGlow=0.0;
-      }
-      else if(uPhase<1.5){
-        // gather：向目标汇聚
-        float gatherT=clamp(uPhase-0.5,0.0,1.0);
-        float ease=gatherT*gatherT*(3.0-2.0*gatherT); // smoothstep
-        pos=mix(pos,tgt,ease);
-        // 添加螺旋轨迹
-        float spiral=(1.0-ease)*20.0;
-        pos.x+=sin(t*2.0+r*6.28)*spiral*(1.0-ease);
-        pos.z+=cos(t*2.0+r*6.28)*spiral*(1.0-ease);
-        vAlpha=0.4+ease*0.5;
-        vGlow=ease*0.6;
-      }
-      else if(uPhase<2.5){
-        // form：锁定在表面，微微呼吸
-        pos=tgt;
-        pos+=normalize(tgt)*sin(t*3.0+r*6.28)*0.3;
-        vAlpha=0.85+sin(t*2.0+r*3.0)*0.1;
-        vGlow=0.6+sin(t*1.5)*0.2;
-      }
-      else if(uPhase<3.5){
-        // clash：龙虎对冲
-        float clashT=uPhase-2.5;
-        vec3 clashDir=aSide<0.5?vec3(1.0,-0.2,0.0):vec3(-1.0,0.2,0.0);
-        pos=tgt+clashDir*clashT*60.0;
-        // 碰撞后散射
-        if(clashT>0.3){
-          float scatter=(clashT-0.3)*2.0;
-          vec3 dir=normalize(vec3(hash(r*100.0)-0.5,hash(r*200.0)-0.5,hash(r*300.0)-0.5));
-          pos+=dir*scatter*40.0;
-        }
-        vAlpha=max(0.2,0.9-clashT*0.4);
-        vGlow=max(0.0,1.0-clashT*0.8);
-      }
-      else{
-        // fall：缓缓飘落
-        float fallT=uPhase-3.5;
-        pos=tgt+vec3(
-          sin(t*0.5+r*6.28)*20.0,
-          -fallT*10.0*(0.3+r*0.7),
-          cos(t*0.3+r*3.14)*15.0
-        );
-        pos.x+=(hash(r*50.0)-0.5)*fallT*30.0;
-        vAlpha=max(0.05,0.5-fallT*0.08);
-        vGlow=0.0;
-      }
+function setFall(){
+  for(let i=0;i<TOTAL;i++){
+    pstate[i]=5;
+    pvy[i]=.3+Math.random()*.8;
+    pvx[i]=(Math.random()-.5)*.4;
+    pglow[i]=0;
+  }
+}
 
-      vec4 mvPos=modelViewMatrix*vec4(pos,1.0);
-      gl_Position=projectionMatrix*mvPos;
-      gl_PointSize=uPointSize*300.0/(-mvPos.z);
-      gl_PointSize=clamp(gl_PointSize,2.0,64.0);
+// ═══════════════════════════════════════
+//  更新
+// ═══════════════════════════════════════
+function update(){
+  for(let i=0;i<TOTAL;i++){
+    prot[i]+=protv[i];
+    pph[i]+=.02;
+    const st=pstate[i];
+    if(st===0){ // rain
+      px[i]+=pvx[i]; py[i]+=pvy[i];
+      if(palpha[i]<.55) palpha[i]+=.003;
+      if(py[i]>H+20){py[i]=-20;px[i]=Math.random()*W;}
+    }else if(st===1){ // gather
+      const dx=ptx[i]-px[i], dy=pty[i]-py[i];
+      const d=Math.sqrt(dx*dx+dy*dy)+.1;
+      const f=Math.min(.07,500/(d*d+60));
+      pvx[i]+=dx*f; pvy[i]+=dy*f;
+      pvx[i]*=.90; pvy[i]*=.90;
+      px[i]+=pvx[i]; py[i]+=pvy[i];
+      if(palpha[i]<.85)palpha[i]+=.006;
+      if(pglow[i]<.5)pglow[i]+=.003;
+    }else if(st===2){ // form
+      const dx=ptx[i]-px[i], dy=pty[i]-py[i];
+      px[i]+=dx*.1; py[i]+=dy*.1;
+      palpha[i]=.75+Math.sin(pph[i])*.12;
+      pglow[i]=.4+Math.sin(pph[i]*.7)*.15;
+    }else if(st===3){ // clash
+      px[i]+=pvx[i]; py[i]+=pvy[i];
+      pvx[i]*=.97; pvy[i]*=.97;
+      if(palpha[i]>.3) palpha[i]-=.002;
+      pglow[i]*=.993;
+    }else if(st===4){ // scatter
+      px[i]+=pvx[i]; py[i]+=pvy[i];
+      pvx[i]*=.96; pvy[i]*=.96;
+      pvy[i]+=.03;
+      if(palpha[i]>.08) palpha[i]-=.003;
+      pglow[i]*=.98;
+    }else{ // fall
+      px[i]+=pvx[i]+Math.sin(pph[i])*.3;
+      py[i]+=pvy[i];
+      if(palpha[i]>.04) palpha[i]-=.0008;
+      if(py[i]>H+20){py[i]=-10;palpha[i]=.12;}
     }
-  `,
-  fragmentShader:`
-    uniform sampler2D uAtlas;
-    uniform float uCellSize;
-    varying vec2 vUvOffset;
-    varying float vAlpha;
-    varying float vGlow;
-    varying float vSide;
+  }
+}
 
-    void main(){
-      vec2 uv=gl_PointCoord*uCellSize+vUvOffset;
-      vec4 texColor=texture2D(uAtlas,uv);
-      if(texColor.a<0.1) discard;
-      // 龙金色，虎橙红
-      vec3 tint=vSide<0.5?vec3(1.0,0.85,0.3):vec3(1.0,0.55,0.2);
-      vec3 color=texColor.rgb*tint;
-      // 光晕
-      color+=tint*vGlow*0.3;
-      gl_FragColor=vec4(color,texColor.a*vAlpha);
+// ═══════════════════════════════════════
+//  绘制粒子
+// ═══════════════════════════════════════
+function drawP(){
+  for(let i=0;i<TOTAL;i++){
+    const a=palpha[i];
+    if(a<.02)continue;
+    const x=px[i],y=py[i],g=pglow[i];
+    // 光晕
+    if(g>.12){
+      ctx.globalAlpha=a*g*.2;
+      ctx.fillStyle=pside[i]===0?'#ffd050':'#ff7030';
+      ctx.beginPath();ctx.arc(x,y,psz[i]*1.8,0,Math.PI*2);ctx.fill();
     }
-  `,
-  transparent:true,
-  depthWrite:false,
-  blending:THREE.AdditiveBlending,
-});
-
-const pointCloud=new THREE.Points(pointGeo,pointMat);
-scene.add(pointCloud);
-
-// ═══════════════════════════════════════
-//  半透明龙虎轮廓（辅助感知形体）
-// ═══════════════════════════════════════
-const ghostMat=new THREE.MeshBasicMaterial({
-  color:0xffd050, transparent:true, opacity:0, // 初始隐藏
-  wireframe:false, side:THREE.DoubleSide,
-  blending:THREE.AdditiveBlending, depthWrite:false,
-});
-const dragonMesh=new THREE.Mesh(dragonGeo.clone(),ghostMat.clone());
-dragonMesh.position.x=-40;
-dragonMesh.material.color.set(0xffd050);
-scene.add(dragonMesh);
-
-const tigerMesh=new THREE.Mesh(tigerGeo.clone(),ghostMat.clone());
-tigerMesh.position.x=40;
-tigerMesh.material.color.set(0xff6830);
-scene.add(tigerMesh);
+    ctx.globalAlpha=a;
+    const cc=pcache[i],hs=cc.width/2;
+    if(Math.abs(prot[i])>.01){
+      ctx.save();ctx.translate(x,y);ctx.rotate(prot[i]);
+      ctx.drawImage(cc,-hs,-hs);ctx.restore();
+    }else{
+      ctx.drawImage(cc,x-hs,y-hs);
+    }
+  }
+  ctx.globalAlpha=1;
+}
 
 // ═══════════════════════════════════════
-//  2D 叠加层（「儒」字 + 结尾文字）
+//  龙虎轮廓描边（若隐若现）
 // ═══════════════════════════════════════
-const overlay=document.createElement('canvas');
-overlay.width=innerWidth;overlay.height=innerHeight;
-overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:5';
-document.body.appendChild(overlay);
-const octx=overlay.getContext('2d');
+function drawGhostOutlines(t,phase){
+  if(phase<'gather'||phase>'clash') return;
+  const dr=dragonRect,tr=tigerRect;
+  // 龙轮廓
+  ctx.save();
+  drawDragonPath(ctx,dr.x,dr.y,dr.w,dr.h,t);
+  const da=phase==='form'?.06:.03;
+  ctx.strokeStyle=`rgba(255,210,80,${da})`;
+  ctx.lineWidth=1.5;
+  ctx.stroke();
+  // 龙体内微光
+  const dg=ctx.createRadialGradient(dr.x+dr.w*.55,dr.y+dr.h*.35,10,dr.x+dr.w*.55,dr.y+dr.h*.35,dr.w*.4);
+  dg.addColorStop(0,`rgba(255,200,60,${da*.5})`);
+  dg.addColorStop(1,'rgba(255,180,40,0)');
+  ctx.fillStyle=dg;ctx.fill();
+  ctx.restore();
+
+  // 虎轮廓
+  ctx.save();
+  drawTigerPath(ctx,tr.x,tr.y,tr.w,tr.h,t);
+  ctx.strokeStyle=`rgba(255,120,50,${da})`;
+  ctx.lineWidth=1.5;
+  ctx.stroke();
+  const tg=ctx.createRadialGradient(tr.x+tr.w*.4,tr.y+tr.h*.35,10,tr.x+tr.w*.4,tr.y+tr.h*.35,tr.w*.4);
+  tg.addColorStop(0,`rgba(255,100,30,${da*.5})`);
+  tg.addColorStop(1,'rgba(200,60,20,0)');
+  ctx.fillStyle=tg;ctx.fill();
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════
+//  火花
+// ═══════════════════════════════════════
+const MX=200;
+const sk=new Float32Array(MX*6);
+let sc=0;
+function addSparks(cx,cy,n){
+  for(let i=0;i<n&&sc<MX;i++){
+    const o=sc*6;
+    sk[o]=cx;sk[o+1]=cy;
+    const a=Math.random()*Math.PI*2,s=3+Math.random()*10;
+    sk[o+2]=Math.cos(a)*s;sk[o+3]=Math.sin(a)*s;
+    sk[o+4]=1;sk[o+5]=1+Math.random()*2.5;
+    sc++;
+  }
+}
+function drawSparks(){
+  let alive=0;
+  for(let i=0;i<sc;i++){
+    const o=i*6;
+    sk[o]+=sk[o+2];sk[o+1]+=sk[o+3];
+    sk[o+2]*=.94;sk[o+3]*=.94;sk[o+3]+=.08;
+    sk[o+4]-=.014;
+    if(sk[o+4]<=0)continue;
+    ctx.beginPath();
+    ctx.arc(sk[o],sk[o+1],sk[o+5]*sk[o+4],0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,210,80,${sk[o+4]*.8})`;
+    ctx.fill();
+    if(alive!==i) for(let j=0;j<6;j++)sk[alive*6+j]=sk[o+j];
+    alive++;
+  }
+  sc=alive;
+}
 
 // ═══════════════════════════════════════
 //  动画主循环
 // ═══════════════════════════════════════
-let started=false,startTime=0;
-const clock=new THREE.Clock();
+let started=false,startTime=0,frame=0;
+let phase='',prevPhase='';
 
-// 时间轴
-// 0-4: rain  4-10: gather  10-14: form  14-18: clash  18+: fall
 function getPhase(t){
-  if(t<4)return 0;
-  if(t<10)return .5+((t-4)/6)*.999; // 0.5→1.499 = gather
-  if(t<14)return 2; // form
-  if(t<18)return 2.5+((t-14)/4)*.999; // clash
-  return 4+((t-18)/6); // fall
+  if(t<4.5)return'rain';
+  if(t<10)return'gather';
+  if(t<14)return'form';
+  if(t<15)return'clash';
+  if(t<18)return'scatter';
+  return'fall';
 }
 
-function animate(){
-  requestAnimationFrame(animate);
-  if(!started){renderer.render(scene,camera);return;}
+function tick(){
+  requestAnimationFrame(tick);
+  frame++;
+  if(!started){ctx.fillStyle='#080810';ctx.fillRect(0,0,W,H);return;}
 
   const t=(performance.now()-startTime)/1000;
-  const phase=getPhase(t);
+  phase=getPhase(t);
 
-  // uniform 更新
-  pointMat.uniforms.uTime.value=t;
-  pointMat.uniforms.uPhase.value=phase;
-
-  // gather 时让粒子位置更新（vertex shader 用 position 做起始）
-  // 但因为 shader 里做 mix，需要保持 position 在 rain 位置不变
-  // 所以 position 只做初始散布，target 做最终位置
-
-  // 幽灵模型透明度
-  if(phase>=1.8&&phase<3.5){
-    const ghostA=phase<2?((phase-1.8)/.2)*.04:.04;
-    dragonMesh.material.opacity=ghostA;
-    tigerMesh.material.opacity=ghostA;
-  }else{
-    dragonMesh.material.opacity=0;
-    tigerMesh.material.opacity=0;
+  if(phase!==prevPhase){
+    if(phase==='rain')setRain();
+    if(phase==='gather')setGather();
+    if(phase==='form')setForm();
+    if(phase==='clash')setClash();
+    if(phase==='scatter')setScatter();
+    if(phase==='fall')setFall();
+    prevPhase=phase;
   }
 
-  // 龙虎模型微动
-  dragonMesh.rotation.y=Math.sin(t*.3)*.05;
-  dragonMesh.position.y=Math.sin(t*.5)*2;
-  tigerMesh.rotation.y=Math.sin(t*.3+1)*.04;
-  tigerMesh.position.y=Math.sin(t*.4+.5)*1.5;
+  // form 阶段持续更新目标（龙虎在微动）
+  if(phase==='form'&&frame%30===0) resample();
 
-  // 相机缓慢环绕
-  const camAngle=t*.03;
-  const camR=180+Math.sin(t*.1)*20;
-  camera.position.x=Math.sin(camAngle)*camR*.3;
-  camera.position.z=Math.cos(camAngle)*camR;
-  camera.position.y=20+Math.sin(t*.15)*10;
-  camera.lookAt(0,10,0);
-
-  renderer.render(scene,camera);
-
-  // 2D overlay
-  octx.clearRect(0,0,overlay.width,overlay.height);
-  // 「儒」字
-  if(t>.5&&t<5){
-    const ra=t<1.5?(t-.5):Math.max(0,1-(t-3)/2);
-    if(ra>.01){
-      octx.save();octx.globalAlpha=ra*.5;
-      octx.font='120px "Songti SC","SimSun","KaiTi",serif';
-      octx.textAlign='center';octx.textBaseline='middle';
-      octx.fillStyle='rgba(255,215,80,1)';
-      octx.shadowColor='rgba(255,200,50,.5)';octx.shadowBlur=40;
-      octx.fillText('儒',overlay.width/2,overlay.height/2);
-      octx.restore();
+  // clash 产生火花
+  if(phase==='clash'){
+    const ct=t-14;
+    if(ct>.1&&ct<.9&&frame%2===0){
+      addSparks(W*.5+(Math.random()-.5)*120,H*.45+(Math.random()-.5)*80,6);
     }
   }
-  // 龙虎标签
-  if(phase>=2&&phase<3){
-    octx.save();octx.globalAlpha=.25;
-    octx.font='42px "Songti SC","SimSun","KaiTi",serif';
-    octx.textAlign='center';
-    octx.fillStyle='rgba(255,220,100,1)';
-    octx.fillText('龙',overlay.width*.3,overlay.height*.12);
-    octx.fillStyle='rgba(255,140,60,1)';
-    octx.fillText('虎',overlay.width*.7,overlay.height*.12);
-    octx.restore();
-  }
-  // 碰撞闪光
-  if(phase>=2.5&&phase<3.2){
-    const fa=Math.max(0,.3-(phase-2.5));
+
+  update();
+
+  // 绘制
+  ctx.fillStyle='#080810';ctx.fillRect(0,0,W,H);
+
+  // 龙虎轮廓
+  drawGhostOutlines(t,phase);
+
+  // 碰撞中心闪光
+  if(phase==='clash'){
+    const ct=t-14;
+    const fa=ct<.15?ct/.15*.4:Math.max(0,.4-(ct-.15)*.5);
     if(fa>.01){
-      const g=octx.createRadialGradient(overlay.width/2,overlay.height/2,5,overlay.width/2,overlay.height/2,300);
+      const g=ctx.createRadialGradient(W*.5,H*.45,5,W*.5,H*.45,350);
       g.addColorStop(0,`rgba(255,255,200,${fa})`);
+      g.addColorStop(.3,`rgba(255,200,100,${fa*.5})`);
       g.addColorStop(1,'rgba(200,100,50,0)');
-      octx.fillStyle=g;
-      octx.fillRect(0,0,overlay.width,overlay.height);
+      ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
     }
   }
-  // 结尾文字
+
+  // 「儒」字
+  if(t>.5&&t<5.5){
+    const ra=t<1.5?(t-.5):Math.max(0,1-(t-3.5)/2);
+    if(ra>.01){
+      ctx.save();ctx.globalAlpha=ra*.5;
+      ctx.font='120px "Songti SC","SimSun","KaiTi",serif';
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.shadowColor='rgba(255,200,50,.4)';ctx.shadowBlur=40;
+      ctx.fillStyle='rgba(255,215,80,1)';
+      ctx.fillText('儒',W/2,H/2);
+      ctx.shadowBlur=0;ctx.restore();
+    }
+  }
+
+  // 龙/虎 标签
+  if(phase==='form'){
+    ctx.save();ctx.globalAlpha=.18;
+    ctx.font='44px "Songti SC","SimSun","KaiTi",serif';
+    ctx.textAlign='center';
+    ctx.fillStyle='rgba(255,220,100,1)';
+    ctx.fillText('龙',dragonRect.x+dragonRect.w*.5,dragonRect.y-20);
+    ctx.fillStyle='rgba(255,140,60,1)';
+    ctx.fillText('虎',tigerRect.x+tigerRect.w*.5,tigerRect.y-20);
+    ctx.restore();
+  }
+
+  drawP();
+  drawSparks();
+
+  // 暗角
+  const vig=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.2,W/2,H/2,Math.max(W,H)*.7);
+  vig.addColorStop(0,'rgba(0,0,0,0)');vig.addColorStop(1,'rgba(0,0,0,0.35)');
+  ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+
+  // 结尾
   if(t>22){
     const ea=Math.min(.5,(t-22)/3);
-    octx.save();octx.globalAlpha=ea;octx.textAlign='center';
-    octx.font='24px "Songti SC","SimSun","KaiTi",serif';
-    octx.fillStyle='rgba(200,180,120,1)';
-    octx.fillText('千万经典文字  凝形而战  化字而归',overlay.width/2,overlay.height/2-15);
-    octx.font='14px "Songti SC","SimSun",serif';
-    octx.globalAlpha=ea*.6;octx.fillStyle='rgba(160,145,100,1)';
-    octx.fillText('— 剑来 · 本命字',overlay.width/2,overlay.height/2+15);
-    octx.restore();
+    ctx.save();ctx.globalAlpha=ea;ctx.textAlign='center';
+    ctx.font='24px "Songti SC","SimSun","KaiTi",serif';
+    ctx.fillStyle='rgba(200,180,120,1)';
+    ctx.fillText('千万经典文字  凝形而战  化字而归',W/2,H/2-15);
+    ctx.font='14px "Songti SC","SimSun",serif';
+    ctx.globalAlpha=ea*.6;ctx.fillStyle='rgba(160,145,100,1)';
+    ctx.fillText('— 剑来 · 本命字',W/2,H/2+15);
+    ctx.restore();
   }
 }
 
 // ═══════════════════════════════════════
 //  启动
 // ═══════════════════════════════════════
-const playBtn=document.getElementById('playBtn');
-playBtn.addEventListener('click',()=>{
-  playBtn.style.opacity='0';
-  setTimeout(()=>playBtn.style.display='none',1000);
+document.getElementById('playBtn').addEventListener('click',()=>{
+  const btn=document.getElementById('playBtn');
+  btn.style.opacity='0';setTimeout(()=>btn.style.display='none',1000);
   started=true;startTime=performance.now();
-  initAudioSystem();
+  initAudio();
 },{once:true});
 
 window.addEventListener('resize',()=>{
-  const w=innerWidth,h=innerHeight;
-  camera.aspect=w/h;camera.updateProjectionMatrix();
-  renderer.setSize(w,h);
-  overlay.width=w;overlay.height=h;
-  pointMat.uniforms.uPointSize.value=Math.min(w,h)*.035;
+  W=innerWidth;H=innerHeight;C.width=W;C.height=H;
+  calcLayout();resample();
 });
+C.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
+C.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 
-animate();
+tick();
 
 // ═══════════════════════════════════════
 //  音效
 // ═══════════════════════════════════════
-function initAudioSystem(){
+function initAudio(){
   const ac=new(AudioContext||webkitAudioContext)();
   const m=ac.createGain();m.gain.value=.15;m.connect(ac.destination);
+  // drone
   const dr=ac.createOscillator(),dg=ac.createGain();
   dr.type='sawtooth';dr.frequency.value=40;
   dg.gain.setValueAtTime(0,ac.currentTime);
   dg.gain.linearRampToValueAtTime(.08,ac.currentTime+3);
-  dg.gain.linearRampToValueAtTime(.04,ac.currentTime+10);
+  dg.gain.linearRampToValueAtTime(.05,ac.currentTime+10);
   dg.gain.linearRampToValueAtTime(0,ac.currentTime+22);
   const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=120;
   dr.connect(lp);lp.connect(dg);dg.connect(m);
   dr.start();dr.stop(ac.currentTime+24);
+  // 汇聚
   setTimeout(()=>{
     const r=ac.createOscillator(),rg=ac.createGain();
     r.type='sine';r.frequency.setValueAtTime(100,ac.currentTime);
-    r.frequency.exponentialRampToValueAtTime(450,ac.currentTime+6);
+    r.frequency.exponentialRampToValueAtTime(500,ac.currentTime+5);
     rg.gain.setValueAtTime(.05,ac.currentTime);
-    rg.gain.exponentialRampToValueAtTime(.001,ac.currentTime+6);
-    r.connect(rg);rg.connect(m);r.start();r.stop(ac.currentTime+6.5);
-  },4000);
+    rg.gain.exponentialRampToValueAtTime(.001,ac.currentTime+5);
+    r.connect(rg);rg.connect(m);r.start();r.stop(ac.currentTime+5.5);
+  },4500);
+  // 碰撞
   setTimeout(()=>{
-    const sz=ac.sampleRate*.5,b=ac.createBuffer(1,sz,ac.sampleRate),d=b.getChannelData(0);
-    for(let i=0;i<sz;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/sz*6);
+    const sz=ac.sampleRate*.4,b=ac.createBuffer(1,sz,ac.sampleRate),d=b.getChannelData(0);
+    for(let i=0;i<sz;i++)d[i]=(Math.random()*2-1)*Math.exp(-i/sz*5);
     const s=ac.createBufferSource();s.buffer=b;
-    const g=ac.createGain();g.gain.value=.3;
+    const g=ac.createGain();g.gain.value=.35;
     s.connect(g);g.connect(m);s.start();
     const imp=ac.createOscillator(),ig=ac.createGain();
-    imp.type='sine';imp.frequency.setValueAtTime(80,ac.currentTime);
+    imp.type='sine';imp.frequency.setValueAtTime(90,ac.currentTime);
     imp.frequency.exponentialRampToValueAtTime(20,ac.currentTime+.5);
-    ig.gain.setValueAtTime(.25,ac.currentTime);
+    ig.gain.setValueAtTime(.3,ac.currentTime);
     ig.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.8);
     imp.connect(ig);ig.connect(m);imp.start();imp.stop(ac.currentTime+1);
   },14000);
+  // 余韵
   setTimeout(()=>{
     [220,330,440,554].forEach((f,i)=>{
       const o=ac.createOscillator(),g=ac.createGain();
