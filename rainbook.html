@@ -35,266 +35,234 @@ let W=innerWidth,H=innerHeight;C.width=W;C.height=H;
 const FT='"Songti SC","SimSun","KaiTi",serif';
 
 // ═══════════════════════════════════════
-//  古画：预渲染到离屏 canvas
-//  山水画 + 题诗（竖排）
+//  写意国画 SVG → 离屏canvas
+//  寥寥几笔：远山、近山、松、月、水、石
 // ═══════════════════════════════════════
-let paintCv,paintCtx,PW,PH;
-let paintAngle=-0.12; // 倾斜角度(弧度)
-let paintCX,paintCY; // 画在屏幕的中心
+let paintCv,PW,PH;
+let paintAngle=-0.1;
+let paintCX,paintCY;
 
-// 画面上的「墨点」— 构成山水画的基本单元
-let inkDots=[]; // {x,y,r,alpha,hue,sat,lit,dissolved:0}
-// 诗文字符
-let poemChars=[]; // {ch,x,y,sz,alpha,dissolved:0}
-// 印章
-let seals=[]; // {x,y,sz,alpha,dissolved:0}
+// 画面元素，每个有独立溶解度
+let elements=[]; // {img, x, y, w, h, dissolved:0, layer}
 
-// 诗：王维《山居秋暝》
-const poemText=['空','山','新','雨','後','天','氣','晚','來','秋',
-  '明','月','松','間','照','清','泉','石','上','流'];
+function buildSVGElement(svgStr, w, h){
+  return new Promise(resolve=>{
+    const blob=new Blob([svgStr],{type:'image/svg+xml'});
+    const url=URL.createObjectURL(blob);
+    const img=new Image();
+    img.onload=()=>{URL.revokeObjectURL(url);resolve(img);};
+    img.src=url;
+  });
+}
 
-function buildPainting(){
+async function buildPainting(){
   const s=Math.min(W,H);
-  // 画幅尺寸（竖轴，3:4）
-  PW=Math.floor(s*.55);
-  PH=Math.floor(PW*1.35);
+  PW=Math.floor(s*.6);
+  PH=Math.floor(PW*1.3);
   paintCX=W/2;
   paintCY=H/2;
 
   paintCv=document.createElement('canvas');
   paintCv.width=PW;paintCv.height=PH;
-  paintCtx=paintCv.getContext('2d');
-  const g=paintCtx;
 
-  // — 宣纸底 —
-  g.fillStyle='#f2e8d0';
-  g.fillRect(0,0,PW,PH);
-  // 纸纹
-  g.globalAlpha=.03;g.strokeStyle='#a09070';g.lineWidth=.5;
-  for(let i=0;i<PH;i+=2){g.beginPath();g.moveTo(0,i);g.lineTo(PW,i);g.stroke();}
-  g.globalAlpha=1;
+  elements=[];
 
-  inkDots=[];poemChars=[];seals=[];
+  // 所有SVG用viewBox 0 0 100 100，绘制时缩放
+  // --- 远山（淡墨，宽扁）---
+  const farMtn=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60">
+    <path d="M0,55 Q20,50 35,30 Q45,15 55,22 Q65,10 80,18 Q95,5 110,20 Q120,12 135,25 Q150,18 165,35 Q180,28 200,55 Z"
+      fill="none" stroke="#6a7a6a" stroke-width="1.2" opacity="0.3"/>
+    <path d="M0,55 Q20,50 35,30 Q45,15 55,22 Q65,10 80,18 Q95,5 110,20 Q120,12 135,25 Q150,18 165,35 Q180,28 200,55 Z"
+      fill="#8a9a7a" opacity="0.06"/>
+    <!-- 皴法 -->
+    <path d="M50,25 Q55,30 52,35" fill="none" stroke="#5a6a5a" stroke-width="0.6" opacity="0.2"/>
+    <path d="M90,15 Q95,22 88,28" fill="none" stroke="#5a6a5a" stroke-width="0.5" opacity="0.15"/>
+    <path d="M130,28 Q135,32 128,38" fill="none" stroke="#5a6a5a" stroke-width="0.5" opacity="0.15"/>
+  </svg>`;
 
-  // — 山水画 —
-  // 远山（淡墨）
-  drawMountain(g, PW*.1, PH*.25, PW*.8, PH*.12, .08, '#8a9a7a');
-  drawMountain(g, PW*.0, PH*.3, PW*.6, PH*.1, .1, '#7a8a6a');
-  drawMountain(g, PW*.35,PH*.28,PW*.7, PH*.13,.12,'#6a7a5a');
-  // 近山（浓墨）
-  drawMountain(g, PW*-.1,PH*.45,PW*.5, PH*.2, .2, '#4a5a3a');
-  drawMountain(g, PW*.4, PH*.42,PW*.65,PH*.22,.25,'#3a4a2a');
-  // 树（松）
-  drawPines(g, PW*.15, PH*.42, 5);
-  drawPines(g, PW*.6, PH*.4, 3);
-  // 水/溪流
-  drawStream(g, PW*.3, PH*.58, PW*.4, PH*.08);
-  // 月
-  drawMoon(g, PW*.72, PH*.15, PW*.04);
-  // 石头
-  drawRocks(g, PW*.45, PH*.55, PW*.06);
-  drawRocks(g, PW*.2, PH*.6, PW*.04);
+  // --- 近山（浓墨，高耸）---
+  const nearMtn=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
+    <path d="M0,95 Q8,88 15,60 Q20,40 28,50 Q35,25 45,15 Q50,8 55,18 Q60,30 65,22 Q72,38 78,55 Q82,48 90,65 Q100,78 120,95 Z"
+      fill="#3a4a2a" opacity="0.12"/>
+    <path d="M0,95 Q8,88 15,60 Q20,40 28,50 Q35,25 45,15 Q50,8 55,18 Q60,30 65,22 Q72,38 78,55 Q82,48 90,65 Q100,78 120,95 Z"
+      fill="none" stroke="#2a3a1a" stroke-width="1.5" opacity="0.35"
+      stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- 浓墨皴法 -->
+    <path d="M40,20 Q42,30 38,40 M44,25 Q48,35 42,45" fill="none" stroke="#2a3a1a" stroke-width="0.8" opacity="0.2"/>
+    <path d="M55,22 Q58,32 54,42 M60,28 Q62,38 57,48" fill="none" stroke="#2a3a1a" stroke-width="0.7" opacity="0.18"/>
+    <path d="M28,52 Q30,58 26,65" fill="none" stroke="#2a3a1a" stroke-width="0.6" opacity="0.15"/>
+    <path d="M75,50 Q78,58 73,66" fill="none" stroke="#2a3a1a" stroke-width="0.6" opacity="0.15"/>
+  </svg>`;
 
-  // — 题诗（右侧竖排）—
-  const pSz=Math.floor(PW*.035);
-  const startX=PW*.88;
-  const startY=PH*.15;
-  const lineGap=pSz*1.6;
-  const charGap=pSz*1.35;
-  // 两列，每列10字
+  // --- 近山2（右侧）---
+  const nearMtn2=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 90">
+    <path d="M0,85 Q10,75 20,55 Q30,35 40,25 Q48,18 52,28 Q60,42 70,52 Q80,60 100,85 Z"
+      fill="#4a5a3a" opacity="0.1"/>
+    <path d="M0,85 Q10,75 20,55 Q30,35 40,25 Q48,18 52,28 Q60,42 70,52 Q80,60 100,85 Z"
+      fill="none" stroke="#3a4a2a" stroke-width="1.3" opacity="0.3"
+      stroke-linecap="round"/>
+    <path d="M35,30 Q38,40 33,50" fill="none" stroke="#3a4a2a" stroke-width="0.7" opacity="0.18"/>
+    <path d="M50,32 Q53,42 48,52" fill="none" stroke="#3a4a2a" stroke-width="0.6" opacity="0.15"/>
+  </svg>`;
+
+  // --- 松树 ---
+  const pine=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 100">
+    <!-- 树干：不直，有弯曲 -->
+    <path d="M25,95 Q24,80 26,65 Q25,50 27,38 Q26,28 25,18"
+      fill="none" stroke="#3a2a18" stroke-width="2" opacity="0.4"
+      stroke-linecap="round"/>
+    <!-- 枝 -->
+    <path d="M26,60 Q35,55 42,58" fill="none" stroke="#3a2a18" stroke-width="1" opacity="0.3" stroke-linecap="round"/>
+    <path d="M25,48 Q16,42 10,45" fill="none" stroke="#3a2a18" stroke-width="1" opacity="0.3" stroke-linecap="round"/>
+    <path d="M26,35 Q34,28 40,30" fill="none" stroke="#3a2a18" stroke-width="0.8" opacity="0.25" stroke-linecap="round"/>
+    <path d="M25,25 Q18,18 14,22" fill="none" stroke="#3a2a18" stroke-width="0.8" opacity="0.25" stroke-linecap="round"/>
+    <!-- 松针团（写意圆团）-->
+    <ellipse cx="42" cy="55" rx="10" ry="7" fill="#2a4a20" opacity="0.12"/>
+    <ellipse cx="10" cy="42" rx="9" ry="6" fill="#2a4a20" opacity="0.1"/>
+    <ellipse cx="40" cy="28" rx="8" ry="6" fill="#2a4a20" opacity="0.1"/>
+    <ellipse cx="14" cy="19" rx="8" ry="5" fill="#2a4a20" opacity="0.08"/>
+    <ellipse cx="26" cy="14" rx="7" ry="5" fill="#2a4a20" opacity="0.1"/>
+    <!-- 松针细笔 -->
+    <path d="M38,52 L45,48 M40,56 L47,54 M36,58 L42,62" fill="none" stroke="#1a3a10" stroke-width="0.4" opacity="0.2"/>
+    <path d="M8,40 L3,36 M12,44 L6,46" fill="none" stroke="#1a3a10" stroke-width="0.4" opacity="0.18"/>
+  </svg>`;
+
+  // --- 月 ---
+  const moon=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">
+    <circle cx="20" cy="20" r="12" fill="#f0e8d0" opacity="0.08"/>
+    <circle cx="20" cy="20" r="8" fill="none" stroke="#c8b888" stroke-width="0.6" opacity="0.15"/>
+    <circle cx="20" cy="20" r="16" fill="#f0e8d0" opacity="0.03"/>
+  </svg>`;
+
+  // --- 溪水 ---
+  const stream=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 30">
+    <path d="M0,15 Q20,10 40,15 Q60,20 80,14 Q100,8 120,16 Q140,22 160,15"
+      fill="none" stroke="#5a7a8a" stroke-width="0.7" opacity="0.12" stroke-linecap="round"/>
+    <path d="M5,20 Q25,15 45,20 Q65,25 85,18 Q105,12 125,20 Q145,26 160,20"
+      fill="none" stroke="#5a7a8a" stroke-width="0.5" opacity="0.08" stroke-linecap="round"/>
+    <path d="M10,25 Q30,20 50,25 Q70,28 90,22 Q110,18 130,24 Q150,28 160,24"
+      fill="none" stroke="#5a7a8a" stroke-width="0.4" opacity="0.06" stroke-linecap="round"/>
+  </svg>`;
+
+  // --- 石头 ---
+  const rock=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 30">
+    <path d="M5,28 Q3,20 8,14 Q12,8 20,6 Q28,4 33,10 Q38,16 36,24 Q34,28 28,28 Z"
+      fill="#5a5040" opacity="0.1"/>
+    <path d="M5,28 Q3,20 8,14 Q12,8 20,6 Q28,4 33,10 Q38,16 36,24 Q34,28 28,28"
+      fill="none" stroke="#4a4030" stroke-width="1.2" opacity="0.25" stroke-linecap="round"/>
+    <!-- 皴 -->
+    <path d="M12,12 Q15,16 12,22" fill="none" stroke="#4a4030" stroke-width="0.5" opacity="0.15"/>
+    <path d="M22,10 Q25,15 22,20" fill="none" stroke="#4a4030" stroke-width="0.5" opacity="0.12"/>
+  </svg>`;
+
+  // --- 构图：在画布上放置 ---
+  const imgs=await Promise.all([
+    buildSVGElement(farMtn,200,60),   // 0 远山
+    buildSVGElement(nearMtn,120,100), // 1 近山左
+    buildSVGElement(nearMtn2,100,90), // 2 近山右
+    buildSVGElement(pine,50,100),     // 3 松
+    buildSVGElement(moon,40,40),      // 4 月
+    buildSVGElement(stream,160,30),   // 5 溪
+    buildSVGElement(rock,40,30),      // 6 石1
+    buildSVGElement(rock,40,30),      // 7 石2
+  ]);
+
+  // 放置（坐标为画布内比例）
+  const e=(img,xr,yr,wr,hr,layer)=>{
+    elements.push({img,x:PW*xr,y:PH*yr,w:PW*wr,h:PH*hr,dissolved:0,layer});
+  };
+  e(imgs[0], .02, .18, .96, .12, 0); // 远山 — 最远层
+  e(imgs[1], -.05,.32, .52, .28, 1); // 近山左
+  e(imgs[2], .48, .35, .48, .25, 1); // 近山右
+  e(imgs[3], .12, .28, .16, .28, 2); // 松
+  e(imgs[4], .7,  .08, .1,  .08, 0); // 月
+  e(imgs[5], .15, .58, .6,  .06, 2); // 溪
+  e(imgs[6], .38, .56, .1,  .06, 2); // 石1
+  e(imgs[7], .18, .6,  .08, .05, 2); // 石2
+}
+
+// ═══════════════════════════════════════
+//  题诗 + 印章（直接画在离屏canvas上）
+// ═══════════════════════════════════════
+const poemText=['空','山','新','雨','後','天','氣','晚','來','秋',
+  '明','月','松','間','照','清','泉','石','上','流'];
+let poemChars=[]; // {ch,x,y,sz,dissolved:0}
+let sealDissolved=0;
+
+function layoutPoem(){
+  poemChars=[];
+  const sz=Math.floor(PW*.033);
+  const startX=PW*.87;
+  const startY=PH*.13;
+  const colG=sz*1.6;
+  const rowG=sz*1.3;
   for(let col=0;col<2;col++){
     for(let row=0;row<10;row++){
       const idx=col*10+row;
       if(idx>=poemText.length)break;
-      const cx=startX-col*lineGap;
-      const cy=startY+row*charGap;
-      g.globalAlpha=.75;
-      g.font=pSz+'px '+FT;
-      g.textAlign='center';g.textBaseline='middle';
-      g.fillStyle='#2a2218';
-      g.fillText(poemText[idx],cx,cy);
-      poemChars.push({ch:poemText[idx],x:cx,y:cy,sz:pSz,alpha:.75,dissolved:0});
+      poemChars.push({
+        ch:poemText[idx],
+        x:startX-col*colG,
+        y:startY+row*rowG,
+        sz, dissolved:0
+      });
     }
   }
-
-  // — 印章 —
-  const sealSz=Math.floor(PW*.04);
-  drawSeal(g,PW*.85,PH*.72,sealSz);
-  seals.push({x:PW*.85,y:PH*.72,sz:sealSz,alpha:.7,dissolved:0});
-
-  g.globalAlpha=1;
-}
-
-function drawMountain(g,sx,sy,w,h,opacity,color){
-  const pts=[];
-  const steps=20;
-  for(let i=0;i<=steps;i++){
-    const t=i/steps;
-    const x=sx+t*w;
-    const y=sy-Math.sin(t*Math.PI)*h*(0.6+Math.random()*.8);
-    pts.push({x,y});
-  }
-  // 用墨点构成山体
-  for(let i=0;i<pts.length-1;i++){
-    const p0=pts[i],p1=pts[i+1];
-    const fillH=sy-Math.min(p0.y,p1.y);
-    for(let j=0;j<8;j++){
-      const t=Math.random();
-      const x=p0.x+t*(p1.x-p0.x);
-      const y=p0.y+t*(p1.y-p0.y)+Math.random()*fillH*.6;
-      if(y>sy+h*.3)continue;
-      const r=1+Math.random()*3;
-      const a=opacity*(0.3+Math.random()*.7);
-      g.globalAlpha=a;
-      g.fillStyle=color;
-      g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.fill();
-      inkDots.push({x,y,r,alpha:a,color,dissolved:0});
-    }
-  }
-  // 山的轮廓线
-  g.globalAlpha=opacity*.8;
-  g.strokeStyle=color;g.lineWidth=1;
-  g.beginPath();g.moveTo(pts[0].x,sy);
-  pts.forEach(p=>g.lineTo(p.x,p.y));
-  g.lineTo(pts[pts.length-1].x,sy);g.stroke();
-  // 轮廓线也加入墨点
-  pts.forEach(p=>{
-    inkDots.push({x:p.x,y:p.y,r:.8,alpha:opacity*.6,color,dissolved:0});
-  });
-}
-
-function drawPines(g,bx,by,count){
-  for(let k=0;k<count;k++){
-    const x=bx+k*PW*.05+(Math.random()-.5)*PW*.02;
-    const y=by-(Math.random()*.03)*PH;
-    // 树干
-    const th=PH*(.06+Math.random()*.04);
-    g.globalAlpha=.3;g.strokeStyle='#3a2a1a';g.lineWidth=1.5;
-    g.beginPath();g.moveTo(x,y);g.lineTo(x+(Math.random()-.5)*3,y-th);g.stroke();
-    for(let i=0;i<8;i++){
-      const ty=y-th*.3-i*th*.08;
-      const tx=x+(Math.random()-.5)*2;
-      inkDots.push({x:tx,y:ty,r:.6,alpha:.25,color:'#3a2a1a',dissolved:0});
-    }
-    // 松针（散点）
-    for(let i=0;i<25;i++){
-      const angle=Math.random()*Math.PI*2;
-      const dist=Math.random()*PW*.025;
-      const lx=x+Math.cos(angle)*dist;
-      const ly=y-th*.6+Math.sin(angle)*dist*.7;
-      const r=.5+Math.random()*1.5;
-      const a=.1+Math.random()*.15;
-      g.globalAlpha=a;g.fillStyle='#3a5a2a';
-      g.beginPath();g.arc(lx,ly,r,0,Math.PI*2);g.fill();
-      inkDots.push({x:lx,y:ly,r,alpha:a,color:'#3a5a2a',dissolved:0});
-    }
-  }
-}
-
-function drawStream(g,sx,sy,w,h){
-  g.globalAlpha=.06;g.strokeStyle='#5a7a8a';g.lineWidth=.8;
-  for(let i=0;i<8;i++){
-    const y=sy+i*h/8;
-    g.beginPath();
-    for(let x=sx;x<sx+w;x+=5){
-      const yy=y+Math.sin((x-sx)*.03+i)*3;
-      x===sx?g.moveTo(x,yy):g.lineTo(x,yy);
-    }
-    g.stroke();
-    // 水纹墨点
-    for(let x=sx;x<sx+w;x+=10+Math.random()*10){
-      inkDots.push({x,y:y+Math.random()*3,r:.4,alpha:.04,color:'#5a7a8a',dissolved:0});
-    }
-  }
-}
-
-function drawMoon(g,cx,cy,r){
-  g.globalAlpha=.08;
-  g.fillStyle='#e8dcc0';
-  g.beginPath();g.arc(cx,cy,r,0,Math.PI*2);g.fill();
-  g.globalAlpha=.04;
-  g.beginPath();g.arc(cx,cy,r*2,0,Math.PI*2);g.fill();
-  inkDots.push({x:cx,y:cy,r:r*.8,alpha:.06,color:'#e8dcc0',dissolved:0});
-}
-
-function drawRocks(g,cx,cy,sz){
-  g.globalAlpha=.2;g.fillStyle='#5a5040';
-  g.beginPath();
-  g.moveTo(cx-sz,cy+sz*.3);
-  g.quadraticCurveTo(cx-sz*.5,cy-sz,cx+sz*.3,cy-sz*.6);
-  g.quadraticCurveTo(cx+sz,cy-sz*.2,cx+sz*.8,cy+sz*.3);
-  g.closePath();g.fill();
-  // 皴法
-  for(let i=0;i<12;i++){
-    const x=cx+(Math.random()-.5)*sz*1.5;
-    const y=cy+(Math.random()-.5)*sz*.6;
-    inkDots.push({x,y,r:.5+Math.random(),alpha:.12+Math.random()*.1,color:'#5a5040',dissolved:0});
-  }
-}
-
-function drawSeal(g,cx,cy,sz){
-  g.globalAlpha=.6;g.fillStyle='#c83030';
-  g.fillRect(cx-sz,cy-sz,sz*2,sz*2);
-  g.globalAlpha=.5;g.font=(sz*.8)+'px '+FT;
-  g.textAlign='center';g.textBaseline='middle';
-  g.fillStyle='#f0e0c0';
-  g.fillText('詩',cx,cy);
 }
 
 // ═══════════════════════════════════════
-//  雨滴系统（落在画上）
+//  水渍系统
 // ═══════════════════════════════════════
-const RN=80;
+const WM=300;
+let wx=new Float32Array(WM),wy=new Float32Array(WM);
+let wr=new Float32Array(WM),wa=new Float32Array(WM);
+let wGrow=new Float32Array(WM); // 水渍还在扩大
+let wc=0;
+
+function addWater(px2,py2){
+  const i=wc%WM;
+  wx[i]=px2;wy[i]=py2;
+  wr[i]=2;wa[i]=.2+Math.random()*.1;
+  wGrow[i]=1;
+  if(wc<WM)wc++;
+}
+
+// ═══════════════════════════════════════
+//  雨
+// ═══════════════════════════════════════
+const RN=100;
 const rdx=new Float32Array(RN),rdy=new Float32Array(RN);
 const rdvy=new Float32Array(RN),rdal=new Float32Array(RN),rdlen=new Float32Array(RN);
 function initRain(){
   for(let i=0;i<RN;i++){
     rdx[i]=Math.random()*W;rdy[i]=-Math.random()*H;
-    rdvy[i]=5+Math.random()*7;rdlen[i]=12+Math.random()*18;
-    rdal[i]=.05+Math.random()*.08;
+    rdvy[i]=5+Math.random()*6;rdlen[i]=10+Math.random()*20;
+    rdal[i]=.04+Math.random()*.07;
   }
 }
 initRain();
 
-// 画面上的水滴积累
-let waterLevel=0; // 0→1 总水量
-const WM=200; // 水渍
-let wx=new Float32Array(WM),wy=new Float32Array(WM);
-let wr=new Float32Array(WM),wa=new Float32Array(WM);
-let wc=0;
-
-// 把屏幕坐标转换到画面坐标
 function screenToPaint(sx2,sy2){
   const dx=sx2-paintCX,dy=sy2-paintCY;
   const cos=Math.cos(-paintAngle),sin=Math.sin(-paintAngle);
   return {x:dx*cos-dy*sin+PW/2, y:dx*sin+dy*cos+PH/2};
 }
 
-function addWaterMark(px2,py2){
-  if(wc>=WM)wc=0;
-  wx[wc]=px2;wy[wc]=py2;
-  wr[wc]=3+Math.random()*8;
-  wa[wc]=.15+Math.random()*.1;
-  wc++;
-}
-
-function updateRain(){
+function updateRain(t){
+  // 雨量随时间增加
+  const intensity=t<6?.3: t<12?.6: t<20?1: .8;
   for(let i=0;i<RN;i++){
-    rdy[i]+=rdvy[i];
-    if(rdy[i]>H+20){rdy[i]=-rdlen[i];rdx[i]=Math.random()*W;rdvy[i]=5+Math.random()*7;}
-    // 检查是否落在画面范围内
+    rdy[i]+=rdvy[i]*intensity;
+    if(rdy[i]>H+20){rdy[i]=-rdlen[i];rdx[i]=Math.random()*W;rdvy[i]=5+Math.random()*6;}
     const pp=screenToPaint(rdx[i],rdy[i]);
-    if(pp.x>-10&&pp.x<PW+10&&pp.y>-10&&pp.y<PH+10){
-      if(rdy[i]>paintCY-PH*.5&&Math.random()<.02){
-        addWaterMark(pp.x,pp.y);
-        waterLevel=Math.min(1,waterLevel+.0003);
-      }
+    if(pp.x>0&&pp.x<PW&&pp.y>0&&pp.y<PH){
+      if(Math.random()<.015*intensity) addWater(pp.x,pp.y);
     }
   }
 }
 
 function drawRain2(){
-  ctx.strokeStyle='rgba(140,155,170,.1)';ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(140,155,170,.09)';ctx.lineWidth=1;
   for(let i=0;i<RN;i++){
     ctx.globalAlpha=rdal[i];
     ctx.beginPath();ctx.moveTo(rdx[i],rdy[i]);ctx.lineTo(rdx[i],rdy[i]-rdlen[i]);ctx.stroke();
@@ -303,178 +271,163 @@ function drawRain2(){
 }
 
 // ═══════════════════════════════════════
-//  流淌的墨水（从画上流下来）
+//  流淌墨水
 // ═══════════════════════════════════════
-const DM=400;
-let dripX=new Float32Array(DM),dripY=new Float32Array(DM);
-let dripVx=new Float32Array(DM),dripVy=new Float32Array(DM);
-let dripA=new Float32Array(DM),dripR=new Float32Array(DM);
-let dripC=new Array(DM);
-let dripN=0;
-
-function addDrip(px2,py2,color){
-  if(dripN>=DM)return;
-  dripX[dripN]=px2;dripY[dripN]=py2;
-  // 沿着画的倾斜方向流
-  dripVx[dripN]=(Math.random()-.5)*.3+Math.sin(paintAngle)*1.5;
-  dripVy[dripN]=.5+Math.random()*1+Math.cos(paintAngle)*1.5;
-  dripA[dripN]=.2+Math.random()*.15;
-  dripR[dripN]=.5+Math.random()*2;
-  dripC[dripN]=color||'#3a3a2a';
-  dripN++;
+const DM=500;
+let dX=new Float32Array(DM),dY=new Float32Array(DM);
+let dVx=new Float32Array(DM),dVy=new Float32Array(DM);
+let dA=new Float32Array(DM),dR=new Float32Array(DM);
+let dCol=new Array(DM);
+let dN=0;
+function addDrip(x,y,col){
+  if(dN>=DM)return;
+  dX[dN]=x;dY[dN]=y;
+  dVx[dN]=(Math.random()-.5)*.2;
+  dVy[dN]=.3+Math.random()*.8;
+  dA[dN]=.15+Math.random()*.1;
+  dR[dN]=.5+Math.random()*1.5;
+  dCol[dN]=col||'rgba(50,60,40,.5)';
+  dN++;
 }
 
 // ═══════════════════════════════════════
-//  主绘制：离屏画布 + 溶解 + 合成到主canvas
+//  绘制场景
 // ═══════════════════════════════════════
-let dissolveFactor=0; // 0→1 总体溶解程度
-let phaseTime=0; // 用于阶段控制
+let globalDissolve=0;
 
 function drawScene(t){
-  // --- 更新溶解 ---
-  // 阶段1(0-8s): 雨滴零星，画面完好，偶尔晕染
-  // 阶段2(8-18s): 雨水渐多，墨色开始散
-  // 阶段3(18s+): 大面积溶解
-  if(t<8){
-    dissolveFactor=t/8*.05;
-  }else if(t<18){
-    dissolveFactor=.05+(t-8)/10*.4;
-  }else{
-    dissolveFactor=Math.min(1,.45+(t-18)/12*.55);
-  }
+  // 溶解进度
+  if(t<6) globalDissolve=0;
+  else if(t<12) globalDissolve=(t-6)/6*.15;
+  else if(t<22) globalDissolve=.15+(t-12)/10*.55;
+  else globalDissolve=Math.min(1,.7+(t-22)/10*.3);
 
-  // 更新墨点溶解
-  inkDots.forEach(d=>{
-    // 靠近水渍的点溶解更快
-    let nearWater=0;
-    for(let i=0;i<wc;i++){
-      const dx2=d.x-wx[i],dy2=d.y-wy[i];
-      const dist=Math.sqrt(dx2*dx2+dy2*dy2);
-      if(dist<wr[i]*3) nearWater+=wa[i]*(1-dist/(wr[i]*3));
-    }
-    d.dissolved=Math.min(1,d.dissolved+dissolveFactor*.002+nearWater*.01);
-    // 溶解时产生流淌墨水
-    if(d.dissolved>.3&&d.dissolved<.95&&Math.random()<.001*dissolveFactor){
-      addDrip(d.x,d.y,d.color);
-    }
-  });
-
-  // 更新诗文字溶解
-  poemChars.forEach(c=>{
-    let nearWater=0;
-    for(let i=0;i<wc;i++){
-      const dx2=c.x-wx[i],dy2=c.y-wy[i];
-      const dist=Math.sqrt(dx2*dx2+dy2*dy2);
-      if(dist<wr[i]*4) nearWater+=wa[i]*(1-dist/(wr[i]*4));
-    }
-    c.dissolved=Math.min(1,c.dissolved+dissolveFactor*.0015+nearWater*.008);
-  });
-
-  // 更新印章溶解
-  seals.forEach(s=>{
-    s.dissolved=Math.min(1,s.dissolved+dissolveFactor*.001);
-  });
-
-  // --- 重绘离屏画布 ---
-  const g=paintCtx;
+  const g=paintCv.getContext('2d');
   // 宣纸底
   g.globalAlpha=1;g.fillStyle='#f2e8d0';g.fillRect(0,0,PW,PH);
   // 纸纹
-  g.globalAlpha=.03;g.strokeStyle='#a09070';g.lineWidth=.5;
+  g.globalAlpha=.025;g.strokeStyle='#a09070';g.lineWidth=.5;
   for(let i=0;i<PH;i+=3){g.beginPath();g.moveTo(0,i);g.lineTo(PW,i);g.stroke();}
 
   // 水渍
   for(let i=0;i<wc;i++){
-    if(wa[i]<.01)continue;
-    g.globalAlpha=wa[i]*.3;
-    g.fillStyle='rgba(180,190,195,.3)';
+    if(wa[i]<.005)continue;
+    // 水渍慢慢扩大
+    if(wGrow[i]>0){wr[i]+=.03;wGrow[i]-=.002;}
+    g.globalAlpha=wa[i]*.2;
+    g.fillStyle='rgba(175,185,192,.35)';
     g.beginPath();g.arc(wx[i],wy[i],wr[i],0,Math.PI*2);g.fill();
-    // 晕染扩散
-    g.globalAlpha=wa[i]*.1;
-    g.beginPath();g.arc(wx[i],wy[i],wr[i]*2,0,Math.PI*2);g.fill();
-    wa[i]-=.0002; // 水渍慢慢干
+    // 外围晕
+    g.globalAlpha=wa[i]*.06;
+    g.beginPath();g.arc(wx[i],wy[i],wr[i]*2.5,0,Math.PI*2);g.fill();
+    wa[i]-=.0001;
   }
 
-  // 墨点
-  inkDots.forEach(d=>{
-    const a=d.alpha*(1-d.dissolved);
-    if(a<.005)return;
+  // 画面元素
+  elements.forEach(el=>{
+    // 靠近水渍的溶解更快
+    let waterNear=0;
+    const ecx=el.x+el.w/2,ecy=el.y+el.h/2;
+    for(let i=0;i<wc;i++){
+      if(wa[i]<.01)continue;
+      const dx2=ecx-wx[i],dy2=ecy-wy[i];
+      const dist=Math.sqrt(dx2*dx2+dy2*dy2);
+      if(dist<wr[i]*5+el.w*.5) waterNear+=wa[i]*(1-dist/(wr[i]*5+el.w*.5));
+    }
+    el.dissolved=Math.min(1,el.dissolved+globalDissolve*.0008+waterNear*.004);
+    
+    const a=1-el.dissolved;
+    if(a<.01)return;
     g.globalAlpha=a;
-    g.fillStyle=d.color;
-    // 溶解时扩散
-    const spread=1+d.dissolved*2;
-    g.beginPath();g.arc(d.x,d.y,d.r*spread,0,Math.PI*2);g.fill();
-    if(d.dissolved>.2){
-      g.globalAlpha=a*.3;
-      g.beginPath();g.arc(d.x,d.y+d.dissolved*3,d.r*spread*1.5,0,Math.PI*2);g.fill();
+    // 溶解时加模糊效果（用shadow模拟）
+    if(el.dissolved>.1){
+      g.filter='blur('+Math.floor(el.dissolved*4)+'px)';
+    }
+    g.drawImage(el.img,el.x,el.y+el.dissolved*8,el.w,el.h);
+    g.filter='none';
+    
+    // 产生流淌墨水
+    if(el.dissolved>.15&&el.dissolved<.9&&Math.random()<el.dissolved*.003){
+      addDrip(el.x+Math.random()*el.w, el.y+el.h*.5+Math.random()*el.h*.5);
     }
   });
 
-  // 诗文字
+  // 题诗
   poemChars.forEach(c=>{
-    const a=c.alpha*(1-c.dissolved);
+    let waterNear=0;
+    for(let i=0;i<wc;i++){
+      if(wa[i]<.01)continue;
+      const dx2=c.x-wx[i],dy2=c.y-wy[i];
+      const dist=Math.sqrt(dx2*dx2+dy2*dy2);
+      if(dist<wr[i]*4) waterNear+=wa[i]*(1-dist/(wr[i]*4));
+    }
+    c.dissolved=Math.min(1,c.dissolved+globalDissolve*.001+waterNear*.006);
+    const a=.75*(1-c.dissolved);
     if(a<.01)return;
     g.globalAlpha=a;
     g.font=c.sz+'px '+FT;g.textAlign='center';g.textBaseline='middle';
     g.fillStyle='#2a2218';
     if(c.dissolved>.1){
-      g.shadowColor='rgba(42,34,24,'+a*.5+')';
-      g.shadowBlur=c.dissolved*c.sz*.8;
+      g.shadowColor='rgba(42,34,24,'+a*.4+')';
+      g.shadowBlur=c.dissolved*c.sz;
     }
-    g.fillText(c.ch,c.x,c.y+c.dissolved*4);
+    g.fillText(c.ch,c.x,c.y+c.dissolved*5);
     g.shadowBlur=0;
   });
 
   // 印章
-  seals.forEach(s=>{
-    const a=s.alpha*(1-s.dissolved);
-    if(a<.02)return;
-    g.globalAlpha=a;
-    const spread=1+s.dissolved;
-    g.fillStyle='rgba(200,48,48,'+a+')';
-    g.fillRect(s.x-s.sz*spread,s.y-s.sz*spread,s.sz*2*spread,s.sz*2*spread);
-    if(a>.1){
-      g.globalAlpha=a*.7;g.font=(s.sz*.8)+'px '+FT;
+  sealDissolved=Math.min(1,sealDissolved+globalDissolve*.0006);
+  const sa=.6*(1-sealDissolved);
+  if(sa>.01){
+    const sealSz=Math.floor(PW*.035);
+    const sealX=PW*.84,sealY=PH*.7;
+    g.globalAlpha=sa;
+    if(sealDissolved>.1) g.filter='blur('+Math.floor(sealDissolved*3)+'px)';
+    g.fillStyle='rgba(200,48,48,'+sa+')';
+    const spread=1+sealDissolved*.5;
+    g.fillRect(sealX-sealSz*spread,sealY-sealSz*spread,sealSz*2*spread,sealSz*2*spread);
+    if(sa>.08){
+      g.globalAlpha=sa*.8;g.font=(sealSz*.7)+'px '+FT;
       g.textAlign='center';g.textBaseline='middle';
-      g.fillStyle='#f0e0c0';g.fillText('詩',s.x,s.y);
+      g.fillStyle='#f0e0c0';g.fillText('詩',sealX,sealY);
     }
-  });
+    g.filter='none';
+  }
 
   // 边框
-  g.globalAlpha=.1*(1-dissolveFactor*.6);
+  g.globalAlpha=.08*(1-globalDissolve*.7);
   g.strokeStyle='#6a5a4a';g.lineWidth=1.5;
-  g.strokeRect(6,6,PW-12,PH-12);
+  g.strokeRect(5,5,PW-10,PH-10);
   g.globalAlpha=1;
 
-  // --- 合成到主canvas（倾斜放置）---
+  // 合成到主canvas
   ctx.save();
   ctx.translate(paintCX,paintCY);
   ctx.rotate(paintAngle);
-  // 画框阴影
-  ctx.shadowColor='rgba(0,0,0,.12)';ctx.shadowBlur=30;ctx.shadowOffsetY=8;ctx.shadowOffsetX=-4;
+  ctx.shadowColor='rgba(0,0,0,.1)';ctx.shadowBlur=25;ctx.shadowOffsetY=6;
   ctx.drawImage(paintCv,-PW/2,-PH/2);
   ctx.shadowBlur=0;
   ctx.restore();
 
-  // --- 流淌的墨水（屏幕空间）---
+  // 流淌墨水（屏幕空间）
   let alive=0;
-  for(let i=0;i<dripN;i++){
-    // 画面坐标→屏幕坐标
-    const cos=Math.cos(paintAngle),sin=Math.sin(paintAngle);
-    const sx2=(dripX[i]-PW/2)*cos-(dripY[i]-PH/2)*sin+paintCX;
-    const sy2=(dripX[i]-PW/2)*sin+(dripY[i]-PH/2)*cos+paintCY;
-    dripVy[i]+=.03;
-    dripX[i]+=dripVx[i];dripY[i]+=dripVy[i];
-    dripA[i]-=.001;
-    if(dripA[i]<.005||sy2>H+20)continue;
-    ctx.globalAlpha=dripA[i];
-    ctx.fillStyle=dripC[i];
-    ctx.beginPath();ctx.arc(sx2,sy2,dripR[i],0,Math.PI*2);ctx.fill();
-    if(alive!==i){dripX[alive]=dripX[i];dripY[alive]=dripY[i];dripVx[alive]=dripVx[i];
-      dripVy[alive]=dripVy[i];dripA[alive]=dripA[i];dripR[alive]=dripR[i];dripC[alive]=dripC[i];}
+  const cos=Math.cos(paintAngle),sin=Math.sin(paintAngle);
+  for(let i=0;i<dN;i++){
+    dVy[i]+=.02;
+    dX[i]+=dVx[i];dY[i]+=dVy[i];
+    dA[i]-=.0008;
+    if(dA[i]<.003)continue;
+    const sx2=(dX[i]-PW/2)*cos-(dY[i]-PH/2)*sin+paintCX;
+    const sy2=(dX[i]-PW/2)*sin+(dY[i]-PH/2)*cos+paintCY;
+    if(sy2>H+20)continue;
+    ctx.globalAlpha=dA[i];
+    ctx.fillStyle=dCol[i];
+    ctx.beginPath();ctx.arc(sx2,sy2,dR[i],0,Math.PI*2);ctx.fill();
+    if(alive!==i){dX[alive]=dX[i];dY[alive]=dY[i];dVx[alive]=dVx[i];dVy[alive]=dVy[i];
+      dA[alive]=dA[i];dR[alive]=dR[i];dCol[alive]=dCol[i];}
     alive++;
   }
-  dripN=alive;ctx.globalAlpha=1;
+  dN=alive;ctx.globalAlpha=1;
 }
 
 // ═══════════════════════════════════════
@@ -482,17 +435,15 @@ function drawScene(t){
 // ═══════════════════════════════════════
 let endStart=0;
 function drawEnding(t){
-  // 当画面几乎完全溶解
-  if(dissolveFactor<.9)return;
+  if(globalDissolve<.88)return;
   if(!endStart)endStart=t;
-  const et=t-endStart;
-  const a=Math.min(.5,et*.04);
+  const a=Math.min(.5,(t-endStart)*.04);
   if(a<.01)return;
   ctx.save();ctx.globalAlpha=a;
   ctx.textAlign='center';ctx.textBaseline='middle';
-  const sz=Math.floor(Math.min(W,H)*.04);
+  const sz=Math.floor(Math.min(W,H)*.038);
   ctx.font=sz+'px '+FT;
-  ctx.fillStyle='rgba(90,74,58,.8)';
+  ctx.fillStyle='rgba(90,74,58,.75)';
   ctx.fillText('字已隨水去',W/2,H/2-sz*.7);
   ctx.fillText('紙上空留痕',W/2,H/2+sz*.7);
   ctx.restore();
@@ -503,62 +454,56 @@ function drawEnding(t){
 // ═══════════════════════════════════════
 function initAudio(){
   const ac=new(AudioContext||webkitAudioContext)();
-  const m=ac.createGain();m.gain.value=.07;m.connect(ac.destination);
-  // 雨声
+  const m=ac.createGain();m.gain.value=.06;m.connect(ac.destination);
   const sz2=ac.sampleRate*2,buf=ac.createBuffer(1,sz2,ac.sampleRate),d=buf.getChannelData(0);
   for(let i=0;i<sz2;i++)d[i]=(Math.random()*2-1)*.2;
   const src=ac.createBufferSource();src.buffer=buf;src.loop=true;
-  const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=500;
-  const rg=ac.createGain();rg.gain.value=.25;
+  const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=450;
+  const rg=ac.createGain();rg.gain.value=.22;
   src.connect(lp);lp.connect(rg);rg.connect(m);src.start();
-  // 水滴
   function drip(){
     if(!started)return;
     const o=ac.createOscillator(),g2=ac.createGain();
-    o.type='sine';
-    const f=500+Math.random()*500;
+    o.type='sine';const f=500+Math.random()*500;
     o.frequency.setValueAtTime(f,ac.currentTime);
     o.frequency.exponentialRampToValueAtTime(f*.25,ac.currentTime+.1);
-    g2.gain.setValueAtTime(.012+Math.random()*.008,ac.currentTime);
+    g2.gain.setValueAtTime(.01+Math.random()*.008,ac.currentTime);
     g2.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.15);
     o.connect(g2);g2.connect(m);o.start();o.stop(ac.currentTime+.18);
-    setTimeout(drip,600+Math.random()*2000);
+    setTimeout(drip,700+Math.random()*2000);
   }
-  setTimeout(drip,300);
+  setTimeout(drip,400);
 }
 
 // ═══════════════════════════════════════
 //  主循环
 // ═══════════════════════════════════════
-let started=false,startTime=0;
+let started=false,startTime=0,ready=false;
 
 function tick(){
   requestAnimationFrame(tick);
-  if(!started){ctx.fillStyle='#d8d0c0';ctx.fillRect(0,0,W,H);return;}
+  if(!started||!ready){ctx.fillStyle='#d8d0c0';ctx.fillRect(0,0,W,H);return;}
   const t=(performance.now()-startTime)/1000;
-
-  // 灰蓝天色
   const bg=ctx.createLinearGradient(0,0,0,H);
-  bg.addColorStop(0,'#c8c4b8');bg.addColorStop(.5,'#d2cec2');bg.addColorStop(1,'#d8d4c8');
+  bg.addColorStop(0,'#c8c4b8');bg.addColorStop(.5,'#d0ccc0');bg.addColorStop(1,'#d8d4c8');
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
-
-  updateRain();
+  updateRain(t);
   drawRain2();
   drawScene(t);
   drawEnding(t);
 }
 
-// 启动
-document.getElementById('p').addEventListener('click',()=>{
+document.getElementById('p').addEventListener('click',async()=>{
   const b=document.getElementById('p');
   b.style.opacity='0';setTimeout(()=>b.style.display='none',1500);
   started=true;startTime=performance.now();
-  buildPainting();
+  await buildPainting();
+  layoutPoem();
+  ready=true;
   initAudio();
 },{once:true});
 window.addEventListener('resize',()=>{
   W=innerWidth;H=innerHeight;C.width=W;C.height=H;
-  if(started)buildPainting();
 });
 C.addEventListener('touchstart',e=>e.preventDefault(),{passive:false});
 C.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
