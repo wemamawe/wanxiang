@@ -236,8 +236,8 @@ const rdvy=new Float32Array(RN),rdal=new Float32Array(RN),rdlen=new Float32Array
 function initRain(){
   for(let i=0;i<RN;i++){
     rdx[i]=Math.random()*W;rdy[i]=-Math.random()*H;
-    rdvy[i]=5+Math.random()*6;rdlen[i]=10+Math.random()*20;
-    rdal[i]=.04+Math.random()*.07;
+    rdvy[i]=6+Math.random()*8;rdlen[i]=20+Math.random()*35;
+    rdal[i]=.12+Math.random()*.15;
   }
 }
 initRain();
@@ -253,19 +253,58 @@ function updateRain(t){
   const intensity=t<6?.3: t<12?.6: t<20?1: .8;
   for(let i=0;i<RN;i++){
     rdy[i]+=rdvy[i]*intensity;
-    if(rdy[i]>H+20){rdy[i]=-rdlen[i];rdx[i]=Math.random()*W;rdvy[i]=5+Math.random()*6;}
+    if(rdy[i]>H+20){rdy[i]=-rdlen[i];rdx[i]=Math.random()*W;rdvy[i]=6+Math.random()*8;}
     const pp=screenToPaint(rdx[i],rdy[i]);
     if(pp.x>0&&pp.x<PW&&pp.y>0&&pp.y<PH){
-      if(Math.random()<.015*intensity) addWater(pp.x,pp.y);
+      if(Math.random()<.015*intensity){
+        addWater(pp.x,pp.y);
+        // 屏幕坐标上溅花
+        addSplash(rdx[i],rdy[i]);
+      }
     }
   }
 }
 
+// 雨滴落到画上溅起的水花
+const SPM=60;
+let spX=new Float32Array(SPM),spY=new Float32Array(SPM);
+let spR=new Float32Array(SPM),spA=new Float32Array(SPM);
+let spN=0;
+function addSplash(x,y){
+  const i=spN%SPM;
+  spX[i]=x;spY[i]=y;spR[i]=1;spA[i]=.35+Math.random()*.15;
+  if(spN<SPM)spN++;
+}
+
 function drawRain2(){
-  ctx.strokeStyle='rgba(140,155,170,.09)';ctx.lineWidth=1;
+  // 雨丝
+  ctx.lineCap='round';
   for(let i=0;i<RN;i++){
     ctx.globalAlpha=rdal[i];
-    ctx.beginPath();ctx.moveTo(rdx[i],rdy[i]);ctx.lineTo(rdx[i],rdy[i]-rdlen[i]);ctx.stroke();
+    ctx.strokeStyle='rgba(180,195,210,'+rdal[i]+')';
+    ctx.lineWidth=1.5+Math.random()*.5;
+    ctx.beginPath();ctx.moveTo(rdx[i],rdy[i]);ctx.lineTo(rdx[i]-.5,rdy[i]-rdlen[i]);ctx.stroke();
+  }
+  ctx.lineCap='butt';
+  // 溅花
+  for(let i=0;i<spN;i++){
+    if(spA[i]<.01)continue;
+    spR[i]+=.5;spA[i]-=.006;
+    ctx.globalAlpha=spA[i];
+    ctx.strokeStyle='rgba(190,205,220,.4)';
+    ctx.lineWidth=.8;
+    ctx.beginPath();ctx.ellipse(spX[i],spY[i],spR[i],spR[i]*.25,0,0,Math.PI*2);ctx.stroke();
+    // 小水珠飞溅
+    if(spR[i]<4){
+      for(let j=0;j<3;j++){
+        const a2=Math.random()*Math.PI;
+        const dx2=Math.cos(a2)*spR[i]*1.5;
+        const dy2=-Math.sin(a2)*spR[i]*.8;
+        ctx.globalAlpha=spA[i]*.6;
+        ctx.fillStyle='rgba(200,215,230,.5)';
+        ctx.beginPath();ctx.arc(spX[i]+dx2,spY[i]+dy2,1,0,Math.PI*2);ctx.fill();
+      }
+    }
   }
   ctx.globalAlpha=1;
 }
