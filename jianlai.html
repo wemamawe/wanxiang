@@ -251,23 +251,33 @@ function drawTigerPath(ctx,ox,oy,w,h,t){
 // ═══════════════════════════════════════
 // 在离屏canvas上画轮廓，然后随机撒点判断是否在内部
 function sampleInsidePath(drawFn,ox,oy,w,h,count){
+  // 额外边距容纳须/爪/角等超出主体的部分
+  const pad=80;
   const oc=document.createElement('canvas');
-  oc.width=Math.ceil(w+40);oc.height=Math.ceil(h+40);
-  const ox2=oc.getContext('2d');
-  drawFn(ox2,20-ox,20-oy,w,h,0);
-  ox2.fillStyle='#fff';ox2.fill();
-  const imgData=ox2.getImageData(0,0,oc.width,oc.height);
+  oc.width=Math.ceil(w+pad*2);oc.height=Math.ceil(h+pad*2);
+  const octx=oc.getContext('2d');
+  // 在离屏canvas中以(pad,pad)为原点绘制，即把原始(ox,oy)映射到(pad,pad)
+  drawFn(octx, pad, pad, w, h, 0);
+  octx.fillStyle='#fff';octx.fill();
+  // 描边也算进去（须、爪等只有stroke的部分）
+  octx.strokeStyle='#fff';octx.lineWidth=8;octx.stroke();
+  const imgData=octx.getImageData(0,0,oc.width,oc.height);
   const d=imgData.data;
   const pts=[];
   let tries=0;
-  while(pts.length<count&&tries<count*20){
+  while(pts.length<count&&tries<count*50){
     tries++;
-    const px=Math.random()*oc.width;
-    const py=Math.random()*oc.height;
-    const idx=(Math.floor(py)*oc.width+Math.floor(px))*4;
-    if(d[idx+3]>128){ // 在轮廓内
-      pts.push({x:px-20+ox, y:py-20+oy});
+    const sx=Math.random()*oc.width;
+    const sy=Math.random()*oc.height;
+    const idx=(Math.floor(sy)*oc.width+Math.floor(sx))*4;
+    if(idx>=0&&idx+3<d.length&&d[idx+3]>50){
+      // 映射回屏幕坐标：离屏(sx,sy) → 屏幕(sx-pad+ox, sy-pad+oy)
+      pts.push({x:sx-pad+ox, y:sy-pad+oy});
     }
+  }
+  // 保底：如果采样不足，用轮廓中心填充
+  while(pts.length<count){
+    pts.push({x:ox+w*.5+(Math.random()-.5)*w*.3, y:oy+h*.5+(Math.random()-.5)*h*.3});
   }
   return pts;
 }
@@ -338,11 +348,19 @@ function resample(){
   // 分配目标
   for(let i=0;i<TOTAL;i++){
     if(pside[i]===0){
-      const p=dragonPts[i%dragonPts.length];
-      ptx[i]=p.x; pty[i]=p.y;
+      if(dragonPts.length>0){
+        const p=dragonPts[i%dragonPts.length];
+        ptx[i]=p.x; pty[i]=p.y;
+      }else{
+        ptx[i]=dragonRect.x+dragonRect.w*.5; pty[i]=dragonRect.y+dragonRect.h*.5;
+      }
     }else{
-      const p=tigerPts[(i-TOTAL/2)%tigerPts.length];
-      ptx[i]=p.x; pty[i]=p.y;
+      if(tigerPts.length>0){
+        const p=tigerPts[(i-TOTAL/2)%tigerPts.length];
+        ptx[i]=p.x; pty[i]=p.y;
+      }else{
+        ptx[i]=tigerRect.x+tigerRect.w*.5; pty[i]=tigerRect.y+tigerRect.h*.5;
+      }
     }
   }
 }
