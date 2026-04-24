@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>字陣 · Text Tetris</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;overflow:hidden;touch-action:none;font-family:'Songti SC','SimSun','KaiTi',serif}
+canvas{display:block}
+#cover{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1000;
+  background:rgba(10,10,18,.97);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:opacity 1.5s}
+#cover .inner{text-align:center;color:#c8b888}
+#cover .title{font-size:42px;letter-spacing:16px;margin-bottom:10px}
+#cover .sub{font-size:14px;opacity:.35;letter-spacing:4px;margin-bottom:30px}
+#cover .play{width:68px;height:68px;border-radius:50%;
+  border:1.5px solid rgba(200,184,136,.2);display:flex;align-items:center;justify-content:center;
+  margin:0 auto;transition:all .3s}
+#cover .play:hover{background:rgba(200,184,136,.08)}
+#cover .arr{width:0;height:0;border-top:12px solid transparent;border-bottom:12px solid transparent;
+  border-left:18px solid rgba(200,184,136,.45);margin-left:4px}
+#hud{position:fixed;top:20px;right:20px;z-index:10;color:rgba(200,184,136,.6);
+  font:14px 'Songti SC','SimSun',serif;text-align:right;pointer-events:none}
+#hud .score{font-size:28px;color:rgba(200,184,136,.8);margin-bottom:4px}
+#hud .label{font-size:11px;opacity:.4;letter-spacing:2px}
+#next-box{position:fixed;top:100px;right:20px;z-index:10;pointer-events:none}
+#mobile-controls{position:fixed;bottom:20px;left:0;width:100%;z-index:10;
+  display:none;justify-content:center;gap:12px;padding:0 20px}
+#mobile-controls button{width:56px;height:56px;border-radius:50%;
+  border:1px solid rgba(200,184,136,.15);background:rgba(200,184,136,.06);
+  color:rgba(200,184,136,.5);font-size:22px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+#mobile-controls button:active{background:rgba(200,184,136,.15)}
+#game-over{position:fixed;top:0;left:0;width:100%;height:100%;z-index:2000;
+  background:rgba(10,10,18,.92);display:none;align-items:center;justify-content:center;
+  cursor:pointer}
+#game-over .inner{text-align:center;color:#c8b888}
+#game-over .go-title{font-size:36px;letter-spacing:10px;margin-bottom:8px}
+#game-over .go-score{font-size:20px;opacity:.5;margin-bottom:24px}
+#game-over .go-hint{font-size:13px;opacity:.3}
+@media(max-width:600px){#mobile-controls{display:flex}}
+</style>
+</head>
+<body>
+<div id="cover"><div class="inner">
+  <div class="title">字 陣</div>
+  <div class="sub">以文為磚 · 落字成陣 · 滿行歸虛</div>
+  <div class="play"><div class="arr"></div></div>
+</div></div>
+<div id="hud">
+  <div class="label">得 分</div>
+  <div class="score" id="score-val">0</div>
+  <div class="label" style="margin-top:12px">行 數</div>
+  <div class="score" id="lines-val" style="font-size:22px">0</div>
+  <div class="label" style="margin-top:12px">等 級</div>
+  <div class="score" id="level-val" style="font-size:22px">1</div>
+</div>
+<div id="next-box"><canvas id="next-cv" width="120" height="120"></canvas></div>
+<div id="mobile-controls">
+  <button id="btn-left">←</button>
+  <button id="btn-rotate">↻</button>
+  <button id="btn-down">↓</button>
+  <button id="btn-drop">⤓</button>
+  <button id="btn-right">→</button>
+</div>
+<div id="game-over"><div class="inner">
+  <div class="go-title">字 落 歸 塵</div>
+  <div class="go-score" id="go-score"></div>
+  <div class="go-hint">點擊重新開始</div>
+</div></div>
+<canvas id="c"></canvas>
+
+<script type="module">
+import * as PT from 'https://esm.sh/@chenglou/pretext';
+
+const C=document.getElementById('c'), ctx=C.getContext('2d');
+let W=innerWidth, H=innerHeight; C.width=W; C.height=H;
+
+// ═══════════════════════════════════════
+//  经典古诗词库 — 每个字都是方块的一个格子
+// ═══════════════════════════════════════
+const POEMS=[
+  '床前明月光疑是地上霜举头望明月低头思故乡',
+  '春眠不觉晓处处闻啼鸟夜来风雨声花落知多少',
+  '白日依山尽黄河入海流欲穷千里目更上一层楼',
+  '红豆生南国春来发几枝愿君多采撷此物最相思',
+  '千山鸟飞绝万径人踪灭孤舟蓑笠翁独钓寒江雪',
+  '空山不见人但闻人语响返景入深林复照青苔上',
+  '松下问童子言师采药去只在此山中云深不知处',
+  '月落乌啼霜满天江枫渔火对愁眠姑苏城外寒山寺夜半钟声到客船',
+  '国破山河在城春草木深感时花溅泪恨别鸟惊心',
+  '锄禾日当午汗滴禾下土谁知盘中餐粒粒皆辛苦',
+];
+let charPool=[];
+function refillPool(){
+  const poem=POEMS[Math.floor(Math.random()*POEMS.length)];
+  for(const ch of poem) charPool.push(ch);
+}
+function nextChar(){
+  if(charPool.length<4) refillPool();
+  return charPool.shift();
+}
+
+// ═══════════════════════════════════════
+//  游戏常量
+// ═══════════════════════════════════════
+const COLS=10, ROWS=20;
+const CELL=Math.floor(Math.min(W*.042, H*.042, 32));
+const BOARD_W=COLS*CELL, BOARD_H=ROWS*CELL;
+const BOARD_X=Math.floor((W-BOARD_W)/2);
+const BOARD_Y=Math.floor((H-BOARD_H)/2);
+
+// 7种经典方块 (用坐标偏移定义)
+const SHAPES=[
+  {name:'I', cells:[[0,0],[1,0],[2,0],[3,0]], color:'#4ecdc4'},
+  {name:'O', cells:[[0,0],[1,0],[0,1],[1,1]], color:'#ffe66d'},
+  {name:'T', cells:[[0,0],[1,0],[2,0],[1,1]], color:'#a06cd5'},
+  {name:'S', cells:[[1,0],[2,0],[0,1],[1,1]], color:'#6bcb77'},
+  {name:'Z', cells:[[0,0],[1,0],[1,1],[2,1]], color:'#ff6b6b'},
+  {name:'L', cells:[[0,0],[1,0],[2,0],[2,1]], color:'#ffa94d'},
+  {name:'J', cells:[[0,0],[1,0],[2,0],[0,1]], color:'#74b9ff'},
+];
+
+// ═══════════════════════════════════════
+//  游戏状态
+// ═══════════════════════════════════════
+// board[row][col] = null | {ch, color}
+let board=[];
+function initBoard(){
+  board=[];
+  for(let r=0;r<ROWS;r++){
+    board[r]=[];
+    for(let c=0;c<COLS;c++) board[r][c]=null;
+  }
+}
+
+let current=null; // {shape, cells:[{r,c,ch}...], col, row, rotation}
+let nextPiece=null;
+let score=0, lines=0, level=1;
+let dropInterval=800;
+let lastDrop=0;
+let gameOver=false;
+let started=false;
+
+// 消行动画
+let clearingRows=[]; // [{row, alpha, t}]
+let clearAnimating=false;
+
+// 粒子 (消行时文字飞散)
+const PMAX=400;
+let particles=[];
+
+function newPiece(){
+  const shape=nextPiece||SHAPES[Math.floor(Math.random()*SHAPES.length)];
+  nextPiece=SHAPES[Math.floor(Math.random()*SHAPES.length)];
+  const cells=shape.cells.map(([c,r])=>({
+    r, c, ch:nextChar()
+  }));
+  current={
+    shape, cells, col:Math.floor(COLS/2)-1, row:0, rotation:0,
+    color:shape.color
+  };
+  // 检查是否能放置
+  if(!canPlace(current.cells, current.row, current.col)){
+    gameOver=true;
+    document.getElementById('game-over').style.display='flex';
+    document.getElementById('go-score').textContent='得分：'+score+'　行数：'+lines;
+  }
+  drawNextPreview();
+}
+
+function canPlace(cells, row, col){
+  for(const c of cells){
+    const r2=row+c.r, c2=col+c.c;
+    if(r2<0||r2>=ROWS||c2<0||c2>=COLS) return false;
+    if(board[r2][c2]) return false;
+  }
+  return true;
+}
+
+function rotateCells(cells){
+  // 找bounding box中心旋转90度
+  let maxR=0,maxC=0;
+  cells.forEach(c=>{maxR=Math.max(maxR,c.r);maxC=Math.max(maxC,c.c);});
+  return cells.map(c=>({
+    r:c.c, c:maxR-c.r, ch:c.ch
+  }));
+}
+
+function lockPiece(){
+  for(const c of current.cells){
+    const r2=current.row+c.r, c2=current.col+c.c;
+    if(r2>=0&&r2<ROWS&&c2>=0&&c2<COLS){
+      board[r2][c2]={ch:c.ch, color:current.color};
+    }
+  }
+  checkLines();
+  newPiece();
+}
+
+function checkLines(){
+  let cleared=[];
+  for(let r=ROWS-1;r>=0;r--){
+    if(board[r].every(c=>c!==null)){
+      cleared.push(r);
+    }
+  }
+  if(cleared.length>0){
+    // 触发消行动画
+    clearingRows=cleared.map(row=>({row, alpha:1, t:0}));
+    clearAnimating=true;
+    // 生成消散粒子
+    for(const row of cleared){
+      for(let c=0;c<COLS;c++){
+        const cell=board[row][c];
+        if(!cell) continue;
+        const px=BOARD_X+c*CELL+CELL/2;
+        const py=BOARD_Y+row*CELL+CELL/2;
+        particles.push({
+          x:px, y:py, ch:cell.ch, color:cell.color,
+          vx:(Math.random()-.5)*6,
+          vy:-2-Math.random()*5,
+          gravity:.12,
+          alpha:1, rotation:Math.random()*Math.PI*2,
+          rotSpeed:(Math.random()-.5)*.15,
+          size:CELL*.6
+        });
+      }
+    }
+    // 延迟后真正消行
+    setTimeout(()=>{
+      for(const row of cleared.sort((a,b)=>a-b)){
+        board.splice(row,1);
+        board.unshift(new Array(COLS).fill(null));
+      }
+      clearAnimating=false;
+      clearingRows=[];
+    }, 500);
+    // 计分
+    const pts=[0,100,300,500,800];
+    score+=pts[cleared.length]*level;
+    lines+=cleared.length;
+    level=Math.floor(lines/10)+1;
+    dropInterval=Math.max(80, 800-level*60);
+    updateHUD();
+    // 音效
+    playClearSound(cleared.length);
+  }
+}
+
+function updateHUD(){
+  document.getElementById('score-val').textContent=score;
+  document.getElementById('lines-val').textContent=lines;
+  document.getElementById('level-val').textContent=level;
+}
+
+// ═══════════════════════════════════════
+//  操作
+// ═══════════════════════════════════════
+function moveLeft(){
+  if(!current||gameOver||clearAnimating) return;
+  if(canPlace(current.cells, current.row, current.col-1)) current.col--;
+}
+function moveRight(){
+  if(!current||gameOver||clearAnimating) return;
+  if(canPlace(current.cells, current.row, current.col+1)) current.col++;
+}
+function moveDown(){
+  if(!current||gameOver||clearAnimating) return;
+  if(canPlace(current.cells, current.row+1, current.col)){
+    current.row++;
+    return true;
+  }
+  lockPiece();
+  return false;
+}
+function hardDrop(){
+  if(!current||gameOver||clearAnimating) return;
+  while(canPlace(current.cells, current.row+1, current.col)) current.row++;
+  lockPiece();
+}
+function rotate(){
+  if(!current||gameOver||clearAnimating) return;
+  const rotated=rotateCells(current.cells);
+  // 尝试原位、左移1、右移1
+  for(const offset of [0,-1,1,-2,2]){
+    if(canPlace(rotated, current.row, current.col+offset)){
+      current.cells=rotated;
+      current.col+=offset;
+      return;
+    }
+  }
+}
+
+// ═══════════════════════════════════════
+//  键盘 + 触摸
+// ═══════════════════════════════════════
+document.addEventListener('keydown', e=>{
+  if(!started||gameOver) return;
+  switch(e.key){
+    case'ArrowLeft':case'a':moveLeft();break;
+    case'ArrowRight':case'd':moveRight();break;
+    case'ArrowDown':case's':moveDown();lastDrop=performance.now();break;
+    case'ArrowUp':case'w':rotate();break;
+    case' ':hardDrop();break;
+  }
+  e.preventDefault();
+});
+document.getElementById('btn-left').addEventListener('touchstart',e=>{e.preventDefault();moveLeft();});
+document.getElementById('btn-right').addEventListener('touchstart',e=>{e.preventDefault();moveRight();});
+document.getElementById('btn-down').addEventListener('touchstart',e=>{e.preventDefault();moveDown();});
+document.getElementById('btn-drop').addEventListener('touchstart',e=>{e.preventDefault();hardDrop();});
+document.getElementById('btn-rotate').addEventListener('touchstart',e=>{e.preventDefault();rotate();});
+
+// ═══════════════════════════════════════
+//  音效
+// ═══════════════════════════════════════
+let audioCtx;
+function initAudio(){
+  audioCtx=new(AudioContext||webkitAudioContext)();
+}
+function playDropSound(){
+  if(!audioCtx) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type='triangle'; o.frequency.setValueAtTime(200,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(80,audioCtx.currentTime+.1);
+  g.gain.setValueAtTime(.08,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.15);
+  o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.2);
+}
+function playClearSound(n){
+  if(!audioCtx) return;
+  const baseFreq=[400,500,600,800][Math.min(n-1,3)];
+  for(let i=0;i<n;i++){
+    setTimeout(()=>{
+      const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+      o.type='sine';
+      o.frequency.setValueAtTime(baseFreq+i*100,audioCtx.currentTime);
+      o.frequency.exponentialRampToValueAtTime(baseFreq+200+i*150,audioCtx.currentTime+.2);
+      g.gain.setValueAtTime(.06,audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.3);
+      o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.35);
+    }, i*80);
+  }
+}
+
+// ═══════════════════════════════════════
+//  Next piece preview
+// ═══════════════════════════════════════
+const nextCv=document.getElementById('next-cv'), nctx=nextCv.getContext('2d');
+function drawNextPreview(){
+  if(!nextPiece) return;
+  nctx.clearRect(0,0,120,120);
+  const sz=24;
+  const ox=20, oy=20;
+  nextPiece.cells.forEach(([c,r])=>{
+    nctx.fillStyle='rgba(200,184,136,.06)';
+    nctx.fillRect(ox+c*sz, oy+r*sz, sz-1, sz-1);
+    nctx.strokeStyle=nextPiece.color+'55';
+    nctx.lineWidth=1;
+    nctx.strokeRect(ox+c*sz, oy+r*sz, sz-1, sz-1);
+    const ch=nextChar(); charPool.unshift(ch); // peek and put back... 
+    // 简单处理：preview用随机字
+    nctx.fillStyle=nextPiece.color+'88';
+    nctx.font='14px "Songti SC","SimSun",serif';
+    nctx.textAlign='center'; nctx.textBaseline='middle';
+    nctx.fillText('字', ox+c*sz+sz/2, oy+r*sz+sz/2);
+  });
+}
+
+// ═══════════════════════════════════════
+//  渲染
+// ═══════════════════════════════════════
+// 背景网格
+function drawBG(){
+  // 暗色调背景
+  const grd=ctx.createLinearGradient(0,0,0,H);
+  grd.addColorStop(0,'#0a0a14');
+  grd.addColorStop(1,'#0e0e1a');
+  ctx.fillStyle=grd;
+  ctx.fillRect(0,0,W,H);
+
+  // 棋盘区域底色
+  ctx.fillStyle='rgba(200,184,136,.015)';
+  ctx.fillRect(BOARD_X,BOARD_Y,BOARD_W,BOARD_H);
+
+  // 网格线
+  ctx.strokeStyle='rgba(200,184,136,.04)';
+  ctx.lineWidth=.5;
+  for(let r=0;r<=ROWS;r++){
+    ctx.beginPath();
+    ctx.moveTo(BOARD_X, BOARD_Y+r*CELL);
+    ctx.lineTo(BOARD_X+BOARD_W, BOARD_Y+r*CELL);
+    ctx.stroke();
+  }
+  for(let c=0;c<=COLS;c++){
+    ctx.beginPath();
+    ctx.moveTo(BOARD_X+c*CELL, BOARD_Y);
+    ctx.lineTo(BOARD_X+c*CELL, BOARD_Y+BOARD_H);
+    ctx.stroke();
+  }
+
+  // 边框
+  ctx.strokeStyle='rgba(200,184,136,.08)';
+  ctx.lineWidth=1.5;
+  ctx.strokeRect(BOARD_X-1,BOARD_Y-1,BOARD_W+2,BOARD_H+2);
+}
+
+function drawCell(col,row,ch,color,alpha=1){
+  const x=BOARD_X+col*CELL;
+  const y=BOARD_Y+row*CELL;
+  // 背景方块
+  ctx.globalAlpha=alpha*.15;
+  ctx.fillStyle=color;
+  ctx.fillRect(x+1,y+1,CELL-2,CELL-2);
+  // 边框
+  ctx.globalAlpha=alpha*.3;
+  ctx.strokeStyle=color;
+  ctx.lineWidth=1;
+  ctx.strokeRect(x+1,y+1,CELL-2,CELL-2);
+  // 文字
+  ctx.globalAlpha=alpha*.9;
+  ctx.fillStyle=color;
+  ctx.font=Math.floor(CELL*.6)+'px "Songti SC","SimSun","KaiTi",serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(ch, x+CELL/2, y+CELL/2+1);
+  ctx.globalAlpha=1;
+}
+
+function drawBoard(){
+  for(let r=0;r<ROWS;r++){
+    // 检查是否是消行中的行
+    const clearing=clearingRows.find(cr=>cr.row===r);
+    for(let c=0;c<COLS;c++){
+      const cell=board[r][c];
+      if(!cell) continue;
+      const a=clearing? clearing.alpha : 1;
+      drawCell(c, r, cell.ch, cell.color, a);
+    }
+  }
+}
+
+function drawGhost(){
+  if(!current) return;
+  let ghostRow=current.row;
+  while(canPlace(current.cells, ghostRow+1, current.col)) ghostRow++;
+  if(ghostRow===current.row) return;
+  for(const c of current.cells){
+    const x=BOARD_X+(current.col+c.c)*CELL;
+    const y=BOARD_Y+(ghostRow+c.r)*CELL;
+    ctx.globalAlpha=.08;
+    ctx.strokeStyle=current.color;
+    ctx.lineWidth=1;
+    ctx.strokeRect(x+2,y+2,CELL-4,CELL-4);
+    ctx.globalAlpha=.06;
+    ctx.fillStyle=current.color;
+    ctx.font=Math.floor(CELL*.5)+'px "Songti SC","SimSun",serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(c.ch, x+CELL/2, y+CELL/2);
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawCurrent(){
+  if(!current) return;
+  for(const c of current.cells){
+    drawCell(current.col+c.c, current.row+c.r, c.ch, current.color);
+  }
+}
+
+function drawParticles(){
+  particles=particles.filter(p=>{
+    p.x+=p.vx;
+    p.vy+=p.gravity;
+    p.y+=p.vy;
+    p.alpha-=.012;
+    p.rotation+=p.rotSpeed;
+    p.size*=.995;
+    if(p.alpha<=0) return false;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rotation);
+    ctx.globalAlpha=p.alpha;
+    ctx.fillStyle=p.color;
+    ctx.font=Math.floor(p.size)+'px "Songti SC","SimSun",serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(p.ch, 0, 0);
+    // 发光
+    ctx.shadowColor=p.color;
+    ctx.shadowBlur=p.size*.5;
+    ctx.globalAlpha=p.alpha*.3;
+    ctx.fillText(p.ch, 0, 0);
+    ctx.shadowBlur=0;
+    ctx.restore();
+    return true;
+  });
+  ctx.globalAlpha=1;
+}
+
+// 消行闪光动画
+function updateClearAnim(){
+  for(const cr of clearingRows){
+    cr.t+=.016;
+    cr.alpha=Math.max(0, 1 - cr.t*2);
+    // 闪白
+    if(cr.t<.2){
+      const y=BOARD_Y+cr.row*CELL;
+      ctx.globalAlpha=(1-cr.t*5)*.3;
+      ctx.fillStyle='#fff';
+      ctx.fillRect(BOARD_X, y, BOARD_W, CELL);
+    }
+  }
+  ctx.globalAlpha=1;
+}
+
+// ═══════════════════════════════════════
+//  竖排装饰诗（左右两侧）
+// ═══════════════════════════════════════
+function drawSidePoem(t){
+  const fontSize=Math.floor(CELL*.45);
+  ctx.font=fontSize+'px "Songti SC","SimSun",serif';
+  ctx.textAlign='center';
+  const leftPoem='落字如雨積字成山';
+  const rightPoem='一行歸去萬象更新';
+  const lx=BOARD_X-30, rx=BOARD_X+BOARD_W+30;
+  const startY=BOARD_Y+40;
+  for(let i=0;i<leftPoem.length;i++){
+    ctx.globalAlpha=.08+Math.sin(t*.5+i*.3)*.03;
+    ctx.fillStyle='#c8b888';
+    ctx.fillText(leftPoem[i], lx, startY+i*(fontSize+8));
+  }
+  for(let i=0;i<rightPoem.length;i++){
+    ctx.globalAlpha=.08+Math.sin(t*.5+i*.3+1)*.03;
+    ctx.fillStyle='#c8b888';
+    ctx.fillText(rightPoem[i], rx, startY+i*(fontSize+8));
+  }
+  ctx.globalAlpha=1;
+}
+
+// ═══════════════════════════════════════
+//  主循环
+// ═══════════════════════════════════════
+function tick(now){
+  requestAnimationFrame(tick);
+  if(!started) return;
+  if(gameOver){
+    drawBG();
+    drawBoard();
+    drawParticles();
+    return;
+  }
+  // 自动下落
+  if(!clearAnimating && now-lastDrop>dropInterval){
+    if(!moveDown()) playDropSound();
+    lastDrop=now;
+  }
+  // 渲染
+  drawBG();
+  drawSidePoem(now/1000);
+  drawGhost();
+  drawBoard();
+  drawCurrent();
+  if(clearAnimating) updateClearAnim();
+  drawParticles();
+}
+
+// ═══════════════════════════════════════
+//  启动
+// ═══════════════════════════════════════
+document.getElementById('cover').addEventListener('click',()=>{
+  const cv=document.getElementById('cover');
+  cv.style.opacity='0'; setTimeout(()=>cv.style.display='none',1500);
+  started=true;
+  initBoard();
+  charPool=[];
+  score=0;lines=0;level=1;dropInterval=800;
+  updateHUD();
+  initAudio();
+  newPiece();
+  lastDrop=performance.now();
+},{once:true});
+
+document.getElementById('game-over').addEventListener('click',()=>{
+  document.getElementById('game-over').style.display='none';
+  gameOver=false;
+  initBoard();
+  charPool=[];
+  score=0;lines=0;level=1;dropInterval=800;
+  particles=[];
+  updateHUD();
+  newPiece();
+  lastDrop=performance.now();
+});
+
+window.addEventListener('resize',()=>{
+  W=innerWidth;H=innerHeight;C.width=W;C.height=H;
+});
+
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
