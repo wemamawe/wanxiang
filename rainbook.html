@@ -228,16 +228,20 @@ function addWater(px2,py2){
 }
 
 // ═══════════════════════════════════════
-//  雨
+//  瓢泼大雨 + 镜像倒影
 // ═══════════════════════════════════════
-const RN=100;
+const RN=350; // 大量雨柱
 const rdx=new Float32Array(RN),rdy=new Float32Array(RN);
 const rdvy=new Float32Array(RN),rdal=new Float32Array(RN),rdlen=new Float32Array(RN);
+const rdw=new Float32Array(RN); // 每条雨柱的宽度
 function initRain(){
   for(let i=0;i<RN;i++){
-    rdx[i]=Math.random()*W;rdy[i]=-Math.random()*H;
-    rdvy[i]=6+Math.random()*8;rdlen[i]=20+Math.random()*35;
-    rdal[i]=.12+Math.random()*.15;
+    rdx[i]=Math.random()*W*1.3-W*.15; // 扩大范围
+    rdy[i]=-Math.random()*H*1.5;
+    rdvy[i]=14+Math.random()*18; // 更快
+    rdlen[i]=50+Math.random()*80; // 更长
+    rdal[i]=.25+Math.random()*.35; // 更亮
+    rdw[i]=2+Math.random()*3; // 粗雨柱 2-5px
   }
 }
 initRain();
@@ -249,63 +253,114 @@ function screenToPaint(sx2,sy2){
 }
 
 function updateRain(t){
-  // 雨量随时间增加
-  const intensity=t<6?.3: t<12?.6: t<20?1: .8;
+  const intensity=t<4?.5: t<8?.8: 1;
   for(let i=0;i<RN;i++){
     rdy[i]+=rdvy[i]*intensity;
-    if(rdy[i]>H+20){rdy[i]=-rdlen[i];rdx[i]=Math.random()*W;rdvy[i]=6+Math.random()*8;}
+    // 轻微横向偏移模拟风
+    rdx[i]+=Math.sin(t*.3+i)*.3;
+    if(rdy[i]>H+30){
+      rdy[i]=-rdlen[i]-Math.random()*200;
+      rdx[i]=Math.random()*W*1.3-W*.15;
+      rdvy[i]=14+Math.random()*18;
+      rdw[i]=2+Math.random()*3;
+    }
     const pp=screenToPaint(rdx[i],rdy[i]);
     if(pp.x>0&&pp.x<PW&&pp.y>0&&pp.y<PH){
-      if(Math.random()<.015*intensity){
+      if(Math.random()<.03*intensity){
         addWater(pp.x,pp.y);
-        // 屏幕坐标上溅花
         addSplash(rdx[i],rdy[i]);
       }
     }
   }
 }
 
-// 雨滴落到画上溅起的水花
-const SPM=60;
+// 雨滴溅花
+const SPM=150;
 let spX=new Float32Array(SPM),spY=new Float32Array(SPM);
 let spR=new Float32Array(SPM),spA=new Float32Array(SPM);
 let spN=0;
 function addSplash(x,y){
   const i=spN%SPM;
-  spX[i]=x;spY[i]=y;spR[i]=1;spA[i]=.35+Math.random()*.15;
+  spX[i]=x;spY[i]=y;spR[i]=2;spA[i]=.5+Math.random()*.2;
   if(spN<SPM)spN++;
 }
 
 function drawRain2(){
-  // 雨丝
+  // === 瓢泼大雨 ===
   ctx.lineCap='round';
   for(let i=0;i<RN;i++){
-    ctx.globalAlpha=rdal[i];
-    ctx.strokeStyle='rgba(180,195,210,'+rdal[i]+')';
-    ctx.lineWidth=1.5+Math.random()*.5;
-    ctx.beginPath();ctx.moveTo(rdx[i],rdy[i]);ctx.lineTo(rdx[i]-.5,rdy[i]-rdlen[i]);ctx.stroke();
+    if(rdy[i]<-rdlen[i]||rdx[i]<-20||rdx[i]>W+20)continue;
+    // 雨柱用渐变让顶端淡尾端亮
+    const grd=ctx.createLinearGradient(rdx[i],rdy[i]-rdlen[i],rdx[i],rdy[i]);
+    grd.addColorStop(0,'rgba(200,215,235,0)');
+    grd.addColorStop(.3,'rgba(200,215,235,'+rdal[i]*.4+')');
+    grd.addColorStop(1,'rgba(220,230,245,'+rdal[i]+')');
+    ctx.strokeStyle=grd;
+    ctx.lineWidth=rdw[i];
+    ctx.globalAlpha=1;
+    ctx.beginPath();
+    ctx.moveTo(rdx[i],rdy[i]);
+    ctx.lineTo(rdx[i]-1,rdy[i]-rdlen[i]);
+    ctx.stroke();
   }
   ctx.lineCap='butt';
-  // 溅花
+
+  // === 溅花（更大更明显）===
   for(let i=0;i<spN;i++){
     if(spA[i]<.01)continue;
-    spR[i]+=.5;spA[i]-=.006;
+    spR[i]+=.8;spA[i]-=.008;
+    // 涟漪圈
     ctx.globalAlpha=spA[i];
-    ctx.strokeStyle='rgba(190,205,220,.4)';
-    ctx.lineWidth=.8;
-    ctx.beginPath();ctx.ellipse(spX[i],spY[i],spR[i],spR[i]*.25,0,0,Math.PI*2);ctx.stroke();
-    // 小水珠飞溅
-    if(spR[i]<4){
-      for(let j=0;j<3;j++){
+    ctx.strokeStyle='rgba(210,225,240,.6)';
+    ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.ellipse(spX[i],spY[i],spR[i]*1.5,spR[i]*.4,0,0,Math.PI*2);ctx.stroke();
+    // 飞溅水珠
+    if(spR[i]<8){
+      for(let j=0;j<5;j++){
         const a2=Math.random()*Math.PI;
-        const dx2=Math.cos(a2)*spR[i]*1.5;
-        const dy2=-Math.sin(a2)*spR[i]*.8;
-        ctx.globalAlpha=spA[i]*.6;
-        ctx.fillStyle='rgba(200,215,230,.5)';
-        ctx.beginPath();ctx.arc(spX[i]+dx2,spY[i]+dy2,1,0,Math.PI*2);ctx.fill();
+        const dx2=Math.cos(a2)*spR[i]*2;
+        const dy2=-Math.sin(a2)*spR[i]*1.2-Math.random()*3;
+        ctx.globalAlpha=spA[i]*.7;
+        ctx.fillStyle='rgba(220,235,250,.7)';
+        ctx.beginPath();ctx.arc(spX[i]+dx2,spY[i]+dy2,1+Math.random()*1.5,0,Math.PI*2);ctx.fill();
       }
     }
   }
+
+  // === 水雾层（大雨时的水汽弥漫感）===
+  ctx.globalAlpha=.06;
+  ctx.fillStyle='rgba(190,200,215,1)';
+  ctx.fillRect(0,H*.6,W,H*.4);
+  ctx.globalAlpha=1;
+}
+
+// === 镜像倒影 ===
+function drawMirrorReflection(){
+  // 把画面上半部分翻转到下方作为水面镜像
+  const mirrorY=Math.floor(H*.65); // 镜像分界线
+  const mirrorH=H-mirrorY;
+  // 只在有足够空间时画镜像
+  if(mirrorH<50)return;
+  ctx.save();
+  ctx.globalAlpha=.18; // 倒影淡一些
+  ctx.translate(0,mirrorY*2+mirrorH);
+  ctx.scale(1,-1);
+  ctx.drawImage(C,0,0,W,mirrorY,0,0,W,mirrorY);
+  ctx.restore();
+  // 水纹波动（横条扰动）
+  ctx.save();
+  ctx.globalAlpha=.05;
+  ctx.strokeStyle='rgba(180,200,220,1)';
+  ctx.lineWidth=1;
+  for(let y=mirrorY;y<H;y+=6){
+    ctx.beginPath();
+    ctx.moveTo(0,y);
+    for(let x=0;x<W;x+=20){
+      ctx.lineTo(x,y+Math.sin(x*.02+performance.now()*.001+y*.1)*2);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
   ctx.globalAlpha=1;
 }
 
@@ -527,8 +582,9 @@ function tick(){
   bg.addColorStop(0,'#c8c4b8');bg.addColorStop(.5,'#d0ccc0');bg.addColorStop(1,'#d8d4c8');
   ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
   updateRain(t);
-  drawRain2();
   drawScene(t);
+  drawRain2();
+  drawMirrorReflection();
   drawEnding(t);
 }
 
