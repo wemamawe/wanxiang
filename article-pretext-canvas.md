@@ -187,11 +187,11 @@ The library's design — expensive `prepare()` once, cheap `layout()` many times
 
 ## Live demo
 
-👉 **[See both demos running →](https://wemamawe.github.io/sakura-exhibit/pretext-demo.html)**
+👉 **[See both demos running →](https://wemamawe.github.io/wanxiang/pretext-demo.html)**
 
-Source: [`pretext-demo.html`](https://github.com/wemamawe/sakura-exhibit/blob/main/pretext-demo.html) — a single self-contained file with no build step, loading Pretext via `esm.sh`.
+Source: [`pretext-demo.html`](https://github.com/wemamawe/wanxiang/blob/main/pretext-demo.html) — a single self-contained file with no build step, loading Pretext via `esm.sh`.
 
-The full cherry blossom exhibit (six scenes, Web Audio, 3D sakura) lives at [wemamawe.github.io/sakura-exhibit/home.html](https://wemamawe.github.io/sakura-exhibit/home.html).
+The full cherry blossom exhibit (six scenes, Web Audio, 3D sakura) lives at [wemamawe.github.io/wanxiang/home.html](https://wemamawe.github.io/wanxiang/home.html).
 
 ---
 

@@ -1,8 +1,9 @@
-# 🌸 Blossom Gallery | 花 · 树 · 展览馆
+# 万象 | Wanxiang
 
-> 26 interactive web art scenes — Chinese poetry, nature, emotions, and digital installations.
+> 诗词 · 水墨 · 交互 · 游戏 — 以文字为砖的数字艺术展览馆
+> Interactive web art: Chinese poetry, ink painting, games, and digital installations.
 
-**[✨ Live Demo](https://wemamawe.github.io/sakura-exhibit/)**
+**[✨ Live Demo](https://wemamawe.github.io/wanxiang/)**
 
 ---
 
@@ -54,8 +55,8 @@ Blossom Gallery is a collection of interactive visual art pieces, each a single 
 ## How to Run
 
 ```bash
-git clone https://github.com/wemamawe/sakura-exhibit.git
-cd sakura-exhibit
+git clone https://github.com/wemamawe/wanxiang.git
+cd wanxiang
 open home.html
 # or any scene directly: open lotus.html
 ```

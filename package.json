@@ -1,5 +1,5 @@
 {
-  "name": "sakura-exhibit",
+  "name": "wanxiang",
   "version": "1.0.0",
   "description": "极简风格樱花动画网页，基于 Canvas + SVG 实现。",
   "main": "index.js",
@@ -8,15 +8,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/wemamawe/sakura-exhibit.git"
+    "url": "https://github.com/wemamawe/wanxiang.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/wemamawe/sakura-exhibit/issues"
+    "url": "https://github.com/wemamawe/wanxiang/issues"
   },
-  "homepage": "https://github.com/wemamawe/sakura-exhibit#readme",
+  "homepage": "https://github.com/wemamawe/wanxiang#readme",
   "dependencies": {
     "@chenglou/pretext": "^0.0.5"
   }
