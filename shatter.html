@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>碎 · Shatter</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1a1a; cursor: none; }
+canvas { display: block; width: 100%; height: 100%; }
+#info {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  color: rgba(255,255,255,0.3); font: 14px 'PingFang SC', sans-serif;
+  pointer-events: none; z-index: 10; transition: opacity 1s;
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="info">点击敲碎</div>
+<script>
+// ============================================================
+//  碎 · Shatter — Voronoi paper-smash scene
+// ============================================================
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H, dpr;
+
+// ---------- classic text ----------
+const TEXT = `天地玄黄，宇宙洪荒。日月盈昃，辰宿列张。寒来暑往，秋收冬藏。闰余成岁，律吕调阳。云腾致雨，露结为霜。金生丽水，玉出昆冈。剑号巨阙，珠称夜光。果珍李柰，菜重芥姜。海咸河淡，鳞潜羽翔。龙师火帝，鸟官人皇。始制文字，乃服衣裳。推位让国，有虞陶唐。吊民伐罪，周发殷汤。坐朝问道，垂拱平章。爱育黎首，臣伏戎羌。遐迩一体，率宾归王。鸣凤在竹，白驹食场。化被草木，赖及万方。`;
+
+// ---------- state ----------
+let paperTexture = null;   // offscreen canvas with text
+let pieces = [];           // {polygon, cx, cy, vx, vy, vr, angle, fallen, offscreen, textureX, textureY}
+let hammerX = 0, hammerY = 0;
+let hammerDown = false;
+let hammerAngle = 0;       // swing animation
+let hammerSwingT = -1;
+let shakeT = -1;
+let shakeIntensity = 0;
+let firstClick = true;
+let audioCtx = null;
+
+// ---------- resize ----------
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  buildPaperTexture();
+  resetPaper();
+}
+
+// ---------- paper texture (text on paper) ----------
+function buildPaperTexture() {
+  const c = document.createElement('canvas');
+  c.width = W * dpr;
+  c.height = H * dpr;
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  // paper background — warm cream with subtle fiber noise
+  g.fillStyle = '#f5f0e8';
+  g.fillRect(0, 0, W, H);
+
+  // fiber noise
+  const imgData = g.getImageData(0, 0, c.width, c.height);
+  const d = imgData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (Math.random() - 0.5) * 15;
+    d[i] += n; d[i+1] += n; d[i+2] += n;
+  }
+  g.putImageData(imgData, 0, 0);
+
+  // subtle paper edge shadow
+  const grad = g.createRadialGradient(W/2, H/2, Math.min(W,H)*0.3, W/2, H/2, Math.max(W,H)*0.7);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.08)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, W, H);
+
+  // write text
+  const fontSize = Math.max(16, Math.min(W, H) * 0.028);
+  const lineHeight = fontSize * 1.8;
+  const margin = fontSize * 2;
+  const maxW = W - margin * 2;
+
+  g.font = `${fontSize}px 'Noto Serif SC', 'Source Han Serif SC', 'STSong', 'SimSun', serif`;
+  g.fillStyle = '#2c2c2c';
+  g.textBaseline = 'top';
+
+  // repeat text to fill page
+  let fullText = TEXT;
+  while (g.measureText(fullText).width < maxW * (H / lineHeight)) {
+    fullText += TEXT;
+  }
+
+  let x = margin, y = margin;
+  for (let i = 0; i < fullText.length && y < H - margin; i++) {
+    const ch = fullText[i];
+    if (ch === '\n') { x = margin; y += lineHeight; continue; }
+    const cw = g.measureText(ch).width;
+    if (x + cw > W - margin) { x = margin; y += lineHeight; }
+    if (y > H - margin) break;
+    g.fillText(ch, x, y);
+    x += cw + fontSize * 0.1;
+  }
+
+  paperTexture = c;
+}
+
+// ---------- Voronoi via Delaunay (simple sweep, using d3-delaunay inline) ----------
+// Minimal Delaunay/Voronoi — we'll use a simple approach:
+// generate seed points, compute Voronoi with a basic algorithm
+
+class Voronoi {
+  // Simple Fortune's algorithm is complex; instead we use a brute-force
+  // approach for moderate point counts (< 5000) which is fine at 60fps
+  // We'll compute Voronoi cells by finding nearest seed for grid samples
+  // Actually, let's implement proper Voronoi clipping with a simple approach
+
+  static computeCells(seeds, width, height) {
+    const n = seeds.length;
+    if (n === 0) return [];
+
+    // Use pixel-based approach for reliability: for each seed, find its cell polygon
+    // by walking the boundary between regions.
+    // For better quality, we'll use the dual of Delaunay triangulation.
+    // Simplified: compute cells via half-plane intersection
+
+    const cells = [];
+    for (let i = 0; i < n; i++) {
+      let poly = [
+        [0, 0], [width, 0], [width, height], [0, height]
+      ];
+
+      for (let j = 0; j < n; j++) {
+        if (i === j) continue;
+        // clip poly by the half-plane closer to seed[i] than seed[j]
+        const mx = (seeds[i][0] + seeds[j][0]) / 2;
+        const my = (seeds[i][1] + seeds[j][1]) / 2;
+        const dx = seeds[j][0] - seeds[i][0];
+        const dy = seeds[j][1] - seeds[i][1];
+        // half-plane: dx*(x - mx) + dy*(y - my) <= 0
+        poly = clipPolygon(poly, dx, dy, dx * mx + dy * my);
+        if (poly.length < 3) break;
+      }
+      cells.push(poly);
+    }
+    return cells;
+  }
+}
+
+function clipPolygon(poly, nx, ny, d) {
+  // Sutherland-Hodgman clip: keep side where nx*x + ny*y <= d
+  const out = [];
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const curr = poly[i];
+    const next = poly[(i + 1) % n];
+    const dc = nx * curr[0] + ny * curr[1] - d;
+    const dn = nx * next[0] + ny * next[1] - d;
+    if (dc <= 0) out.push(curr);
+    if ((dc <= 0) !== (dn <= 0)) {
+      const t = dc / (dc - dn);
+      out.push([
+        curr[0] + t * (next[0] - curr[0]),
+        curr[1] + t * (next[1] - curr[1])
+      ]);
+    }
+  }
+  return out;
+}
+
+function polygonCentroid(poly) {
+  let cx = 0, cy = 0;
+  for (const p of poly) { cx += p[0]; cy += p[1]; }
+  return [cx / poly.length, cy / poly.length];
+}
+
+function polygonArea(poly) {
+  let area = 0;
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += poly[i][0] * poly[j][1];
+    area -= poly[j][0] * poly[i][1];
+  }
+  return Math.abs(area) / 2;
+}
+
+// ---------- piece management ----------
+function resetPaper() {
+  pieces = [];
+  // Start with one big piece = entire paper
+  pieces.push({
+    polygon: [[0, 0], [W, 0], [W, H], [0, H]],
+    cx: W / 2, cy: H / 2,
+    vx: 0, vy: 0, vr: 0,
+    angle: 0,
+    fallen: false,
+    offscreen: false,
+    opacity: 1,
+    z: 0, vz: 0 // for 3D pop effect
+  });
+}
+
+function smash(mx, my) {
+  const newPieces = [];
+  let didSmash = false;
+
+  for (const piece of pieces) {
+    if (piece.fallen || piece.offscreen) {
+      newPieces.push(piece);
+      continue;
+    }
+
+    // check if click is inside this piece (in its current local coords)
+    // For simplicity, check untransformed polygon (pieces that haven't moved much)
+    if (!pointInPolygon(mx, my, piece.polygon) || piece.vx !== 0 || piece.vy !== 0) {
+      // not hit or already moving — check if near
+      const dist = Math.hypot(mx - piece.cx, my - piece.cy);
+      const radius = Math.sqrt(polygonArea(piece.polygon) / Math.PI);
+      if (dist < radius * 1.5 && piece.vx === 0 && piece.vy === 0) {
+        // nearby — give it a push
+        const angle = Math.atan2(piece.cy - my, piece.cx - mx);
+        const force = Math.max(0, 1 - dist / (radius * 1.5)) * 3;
+        piece.vx += Math.cos(angle) * force;
+        piece.vy += Math.sin(angle) * force;
+        piece.vr += (Math.random() - 0.5) * 0.05;
+        piece.vz = force * 0.5;
+      }
+      newPieces.push(piece);
+      continue;
+    }
+
+    didSmash = true;
+    const area = polygonArea(piece.polygon);
+    const minArea = W * H * 0.001; // minimum piece size
+
+    if (area < minArea) {
+      // too small to break further — just push it
+      const angle = Math.atan2(piece.cy - my, piece.cx - mx);
+      piece.vx = Math.cos(angle) * (4 + Math.random() * 4);
+      piece.vy = Math.sin(angle) * (4 + Math.random() * 4);
+      piece.vr = (Math.random() - 0.5) * 0.15;
+      piece.vz = 2 + Math.random() * 3;
+      newPieces.push(piece);
+      continue;
+    }
+
+    // Generate Voronoi seeds within the piece polygon
+    const bbox = polyBBox(piece.polygon);
+    const numSeeds = Math.min(12, Math.max(5, Math.floor(area / (W * H * 0.008))));
+    const seeds = [];
+
+    // bias seeds toward impact point
+    for (let i = 0; i < numSeeds; i++) {
+      let sx, sy;
+      for (let tries = 0; tries < 50; tries++) {
+        // mix: 60% biased toward impact, 40% random in bbox
+        if (Math.random() < 0.6) {
+          const r = Math.sqrt(Math.random()) * Math.max(bbox[2] - bbox[0], bbox[3] - bbox[1]) * 0.5;
+          const a = Math.random() * Math.PI * 2;
+          sx = mx + Math.cos(a) * r;
+          sy = my + Math.sin(a) * r;
+        } else {
+          sx = bbox[0] + Math.random() * (bbox[2] - bbox[0]);
+          sy = bbox[1] + Math.random() * (bbox[3] - bbox[1]);
+        }
+        if (pointInPolygon(sx, sy, piece.polygon)) break;
+      }
+      seeds.push([sx, sy]);
+    }
+
+    // Compute Voronoi cells clipped to piece polygon
+    const cells = computeVoronoiInPolygon(seeds, piece.polygon, bbox);
+
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i];
+      if (cell.length < 3) continue;
+      const [cx, cy] = polygonCentroid(cell);
+      const dist = Math.hypot(cx - mx, cy - my);
+      const angle = Math.atan2(cy - my, cx - mx);
+      const force = Math.max(1, 8 - dist * 0.01) * (0.8 + Math.random() * 0.4);
+
+      newPieces.push({
+        polygon: cell,
+        cx, cy,
+        vx: Math.cos(angle) * force * (1 + Math.random()),
+        vy: Math.sin(angle) * force * (1 + Math.random()) - 1,
+        vr: (Math.random() - 0.5) * 0.12,
+        angle: 0,
+        fallen: false,
+        offscreen: false,
+        opacity: 1,
+        z: 0,
+        vz: force * 0.8 + Math.random() * 2
+      });
+    }
+  }
+
+  pieces = newPieces;
+
+  if (didSmash) {
+    shakeT = 0;
+    shakeIntensity = 8;
+    playSmashSound();
+    if (firstClick) {
+      document.getElementById('info').style.opacity = '0';
+      firstClick = false;
+    }
+  }
+}
+
+function computeVoronoiInPolygon(seeds, polygon, bbox) {
+  // Compute Voronoi cells then clip each to the parent polygon
+  const rawCells = Voronoi.computeCells(seeds, bbox[2], bbox[3]);
+  const clipped = [];
+
+  for (let i = 0; i < rawCells.length; i++) {
+    let cell = rawCells[i];
+    // clip cell to parent polygon using Sutherland-Hodgman
+    cell = clipToPolygon(cell, polygon);
+    clipped.push(cell);
+  }
+  return clipped;
+}
+
+function clipToPolygon(subject, clip) {
+  let output = subject.slice();
+  const n = clip.length;
+  for (let i = 0; i < n; i++) {
+    if (output.length < 3) return output;
+    const a = clip[i];
+    const b = clip[(i + 1) % n];
+    // edge normal pointing inward
+    const nx = b[1] - a[1];
+    const ny = a[0] - b[0];
+    const d = nx * a[0] + ny * a[1];
+    output = clipPolygon(output, nx, ny, d);
+  }
+  return output;
+}
+
+function polyBBox(poly) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of poly) {
+    if (p[0] < minX) minX = p[0];
+    if (p[1] < minY) minY = p[1];
+    if (p[0] > maxX) maxX = p[0];
+    if (p[1] > maxY) maxY = p[1];
+  }
+  return [minX, minY, maxX, maxY];
+}
+
+function pointInPolygon(x, y, poly) {
+  let inside = false;
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1];
+    const xj = poly[j][0], yj = poly[j][1];
+    if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// ---------- audio ----------
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playSmashSound() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  // impact thud
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(80, now);
+  osc.frequency.exponentialRampToValueAtTime(30, now + 0.15);
+  gain.gain.setValueAtTime(0.5, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + 0.2);
+
+  // crack noise
+  const bufLen = audioCtx.sampleRate * 0.12;
+  const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 3);
+  }
+  const noise = audioCtx.createBufferSource();
+  const noiseGain = audioCtx.createGain();
+  noise.buffer = buf;
+  noiseGain.gain.setValueAtTime(0.3, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+  noise.connect(noiseGain).connect(audioCtx.destination);
+  noise.start(now);
+
+  // secondary crackle
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+  osc2.type = 'triangle';
+  osc2.frequency.setValueAtTime(200, now + 0.02);
+  osc2.frequency.exponentialRampToValueAtTime(60, now + 0.1);
+  gain2.gain.setValueAtTime(0.15, now + 0.02);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+  osc2.connect(gain2).connect(audioCtx.destination);
+  osc2.start(now + 0.02);
+  osc2.stop(now + 0.12);
+}
+
+// ---------- hammer drawing ----------
+function drawHammer(x, y, swingAngle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.3 + swingAngle); // base angle tilted
+
+  // handle
+  const handleLen = 60;
+  const handleW = 6;
+  ctx.fillStyle = '#8B6914';
+  ctx.strokeStyle = '#6B4F12';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(-handleW/2, 0, handleW, handleLen, 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // handle grip lines
+  ctx.strokeStyle = '#5a3e0e';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 5; i++) {
+    const gy = handleLen - 15 + i * 3;
+    ctx.beginPath();
+    ctx.moveTo(-handleW/2 + 1, gy);
+    ctx.lineTo(handleW/2 - 1, gy);
+    ctx.stroke();
+  }
+
+  // head
+  const headW = 32, headH = 20;
+  ctx.fillStyle = '#555';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(-headW/2, -headH + 2, headW, headH, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  // metallic shine
+  const shine = ctx.createLinearGradient(-headW/2, -headH+2, headW/2, 2);
+  shine.addColorStop(0, 'rgba(255,255,255,0.15)');
+  shine.addColorStop(0.5, 'rgba(255,255,255,0.05)');
+  shine.addColorStop(1, 'rgba(0,0,0,0.1)');
+  ctx.fillStyle = shine;
+  ctx.beginPath();
+  ctx.roundRect(-headW/2, -headH + 2, headW, headH, 3);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ---------- render ----------
+function render(t) {
+  // screen shake
+  let shakeX = 0, shakeY = 0;
+  if (shakeT >= 0) {
+    shakeT += 0.016;
+    if (shakeT < 0.3) {
+      const decay = 1 - shakeT / 0.3;
+      shakeX = Math.sin(shakeT * 60) * shakeIntensity * decay;
+      shakeY = Math.cos(shakeT * 45) * shakeIntensity * decay * 0.7;
+    } else {
+      shakeT = -1;
+    }
+  }
+
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  // dark background
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(-10, -10, W + 20, H + 20);
+
+  // subtle table surface
+  const tableGrad = ctx.createLinearGradient(0, 0, 0, H);
+  tableGrad.addColorStop(0, '#1a1a1a');
+  tableGrad.addColorStop(1, '#222');
+  ctx.fillStyle = tableGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // render pieces
+  const gravity = 0.15;
+  const friction = 0.98;
+
+  for (const p of pieces) {
+    if (p.offscreen) continue;
+
+    // physics update
+    if (p.vx !== 0 || p.vy !== 0 || p.vz !== 0) {
+      p.cx += p.vx;
+      p.cy += p.vy;
+      p.z += p.vz;
+      p.vz -= gravity * 2;
+      if (p.z < 0) {
+        p.z = 0;
+        p.vz = 0;
+        p.vx *= 0.7;
+        p.vy *= 0.7;
+        p.vr *= 0.7;
+        if (Math.abs(p.vx) < 0.1 && Math.abs(p.vy) < 0.1) {
+          p.vx = 0; p.vy = 0; p.vr = 0;
+          p.fallen = true;
+        }
+      }
+      p.angle += p.vr;
+      p.vx *= friction;
+      p.vy *= friction;
+      p.vy += gravity * 0.3; // slight gravity pulling down
+
+      // translate polygon points
+      // Actually we keep polygon in world coords and just offset rendering
+    }
+
+    // fade out fallen pieces slowly
+    if (p.fallen) {
+      p.opacity = Math.max(0, p.opacity - 0.002);
+      if (p.opacity <= 0) { p.offscreen = true; continue; }
+    }
+
+    // check if completely off screen
+    const [bx0, by0, bx1, by1] = polyBBox(p.polygon);
+    const ox = p.cx - (bx0 + bx1) / 2;
+    const oy = p.cy - (by0 + by1) / 2;
+    if (bx1 + ox < -200 || bx0 + ox > W + 200 || by1 + oy < -200 || by0 + oy > H + 200) {
+      p.offscreen = true;
+      continue;
+    }
+
+    // draw piece
+    ctx.save();
+    const origCX = (bx0 + bx1) / 2;
+    const origCY = (by0 + by1) / 2;
+    const dx = p.cx - origCX;
+    const dy = p.cy - origCY;
+
+    ctx.translate(p.cx, p.cy - p.z);
+    ctx.rotate(p.angle);
+    ctx.translate(-origCX, -origCY);
+
+    ctx.globalAlpha = p.opacity;
+
+    // shadow (when elevated)
+    if (p.z > 0) {
+      ctx.save();
+      ctx.translate(p.z * 0.3, p.z * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(p.polygon[0][0], p.polygon[0][1]);
+      for (let i = 1; i < p.polygon.length; i++) {
+        ctx.lineTo(p.polygon[i][0], p.polygon[i][1]);
+      }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(0,0,0,${Math.min(0.3, p.z * 0.02)})`;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // clip to polygon shape and draw paper texture
+    ctx.beginPath();
+    ctx.moveTo(p.polygon[0][0], p.polygon[0][1]);
+    for (let i = 1; i < p.polygon.length; i++) {
+      ctx.lineTo(p.polygon[i][0], p.polygon[i][1]);
+    }
+    ctx.closePath();
+    ctx.save();
+    ctx.clip();
+
+    // draw the paper texture (from the original position)
+    if (paperTexture) {
+      ctx.drawImage(paperTexture, 0, 0, paperTexture.width, paperTexture.height, 0, 0, W, H);
+    }
+    ctx.restore();
+
+    // piece edge (crack line)
+    ctx.beginPath();
+    ctx.moveTo(p.polygon[0][0], p.polygon[0][1]);
+    for (let i = 1; i < p.polygon.length; i++) {
+      ctx.lineTo(p.polygon[i][0], p.polygon[i][1]);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = `rgba(80, 60, 40, ${0.6 * p.opacity})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // slight edge highlight (paper thickness illusion)
+    if (p.z > 0 || p.angle !== 0) {
+      ctx.strokeStyle = `rgba(200, 190, 170, ${0.3 * p.opacity})`;
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  ctx.restore(); // end shake transform
+
+  // hammer
+  let swing = 0;
+  if (hammerSwingT >= 0) {
+    hammerSwingT += 0.016;
+    if (hammerSwingT < 0.15) {
+      // swing down
+      swing = Math.sin(hammerSwingT / 0.15 * Math.PI) * 0.5;
+    } else if (hammerSwingT < 0.4) {
+      // bounce back
+      swing = Math.sin((hammerSwingT - 0.15) / 0.25 * Math.PI) * -0.15;
+    } else {
+      hammerSwingT = -1;
+    }
+  }
+
+  drawHammer(hammerX, hammerY, swing);
+
+  requestAnimationFrame(render);
+}
+
+// ---------- events ----------
+function onMouseMove(e) {
+  hammerX = e.clientX;
+  hammerY = e.clientY;
+}
+
+function onMouseDown(e) {
+  initAudio();
+  hammerDown = true;
+  hammerSwingT = 0;
+  hammerX = e.clientX;
+  hammerY = e.clientY;
+  smash(e.clientX, e.clientY);
+}
+
+function onMouseUp() {
+  hammerDown = false;
+}
+
+function onTouchStart(e) {
+  e.preventDefault();
+  initAudio();
+  const t = e.touches[0];
+  hammerX = t.clientX;
+  hammerY = t.clientY;
+  hammerSwingT = 0;
+  smash(t.clientX, t.clientY);
+}
+
+function onTouchMove(e) {
+  e.preventDefault();
+  const t = e.touches[0];
+  hammerX = t.clientX;
+  hammerY = t.clientY;
+}
+
+canvas.addEventListener('mousemove', onMouseMove);
+canvas.addEventListener('mousedown', onMouseDown);
+canvas.addEventListener('mouseup', onMouseUp);
+canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+canvas.addEventListener('touchmove', onTouchMove, { passive: false });
+
+window.addEventListener('resize', resize);
+resize();
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
