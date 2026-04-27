@@ -409,26 +409,51 @@ function drawHammer(x, y, swing) {
 
 // ---------- crack line rendering ----------
 function drawCrackLine(x1, y1, x2, y2, age) {
-  // older cracks are thicker and darker
-  const alpha = Math.min(0.8, 0.3 + age * 0.1);
-  const width = Math.min(2.5, 0.8 + age * 0.3);
+  // Gap width grows with age — reveals dark background beneath
+  const gapWidth = Math.min(5, 1.5 + age * 0.8);
+  const outerWidth = gapWidth + 2;
 
+  // 1) Outer soft shadow (depth illusion)
   ctx.beginPath();
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
-  ctx.strokeStyle = `rgba(60, 40, 20, ${alpha})`;
-  ctx.lineWidth = width;
+  ctx.strokeStyle = `rgba(0, 0, 0, ${Math.min(0.25, 0.08 + age * 0.04)})`;
+  ctx.lineWidth = outerWidth + 3;
+  ctx.lineCap = 'round';
   ctx.stroke();
 
-  // thin dark inner line
-  if (age > 0) {
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.strokeStyle = `rgba(30, 20, 10, ${alpha * 0.5})`;
-    ctx.lineWidth = Math.max(0.5, width * 0.3);
-    ctx.stroke();
-  }
+  // 2) Dark gap — the actual crack/crevice (shows dark bg through paper)
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.strokeStyle = `rgba(20, 15, 10, ${Math.min(0.9, 0.5 + age * 0.1)})`;
+  ctx.lineWidth = gapWidth;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // 3) Bright edge highlights (paper edge catching light)
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return;
+  const nx = -dy / len * gapWidth * 0.4;
+  const ny = dx / len * gapWidth * 0.4;
+  const edgeAlpha = Math.min(0.35, 0.12 + age * 0.05);
+
+  ctx.beginPath();
+  ctx.moveTo(x1 + nx, y1 + ny);
+  ctx.lineTo(x2 + nx, y2 + ny);
+  ctx.strokeStyle = `rgba(240, 230, 215, ${edgeAlpha})`;
+  ctx.lineWidth = 0.8;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(x1 - nx, y1 - ny);
+  ctx.lineTo(x2 - nx, y2 - ny);
+  ctx.strokeStyle = `rgba(180, 160, 130, ${edgeAlpha * 0.6})`;
+  ctx.lineWidth = 0.6;
+  ctx.lineCap = 'round';
+  ctx.stroke();
 }
 
 // ---------- render ----------
@@ -474,19 +499,30 @@ function render() {
     }
     ctx.restore();
 
-    // slight displacement for depth effect on cracked pieces
+    // Pieces shift slightly apart for visible gap
     if (p.crackAge > 0) {
-      // subtle shadow on one side
+      // micro-offset each piece away from its centroid → creates visible gap
+      const [pcx, pcy] = polygonCentroid(poly);
+      const paperCX = W / 2, paperCY = H / 2;
+      const offDist = Math.min(1.5, 0.3 + p.crackAge * 0.3);
+      const offAngle = Math.atan2(pcy - paperCY, pcx - paperCX);
+      const offX = Math.cos(offAngle) * offDist;
+      const offY = Math.sin(offAngle) * offDist;
+
+      // re-draw with slight offset (overwrite on top)
+      ctx.save();
       ctx.beginPath();
-      ctx.moveTo(poly[0][0], poly[0][1]);
+      ctx.moveTo(poly[0][0] + offX, poly[0][1] + offY);
       for (let i = 1; i < poly.length; i++) {
-        ctx.lineTo(poly[i][0], poly[i][1]);
+        ctx.lineTo(poly[i][0] + offX, poly[i][1] + offY);
       }
       ctx.closePath();
-      const shadowAlpha = Math.min(0.12, p.crackAge * 0.02);
-      ctx.strokeStyle = `rgba(0, 0, 0, ${shadowAlpha})`;
-      ctx.lineWidth = Math.min(3, 0.5 + p.crackAge * 0.4);
-      ctx.stroke();
+      ctx.clip();
+      if (paperTexture) {
+        ctx.drawImage(paperTexture, 0, 0, paperTexture.width, paperTexture.height,
+                      offX, offY, W, H);
+      }
+      ctx.restore();
     }
 
     ctx.restore();
